@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Workmatic Dashboard</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>
+        <span class="logo">W</span>
+        Workmatic
+      </h1>
+      <div class="header-controls">
+        <select id="queue-filter">
+          <option value="">All Queues</option>
+        </select>
+        <span class="refresh-indicator" id="refresh-indicator"></span>
+      </div>
+    </header>
+
+    <section class="stats-section">
+      <div class="stats-grid">
+        <div class="stat-card ready">
+          <div class="stat-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <polyline points="12,6 12,12 16,14"/>
+            </svg>
+          </div>
+          <div class="stat-content">
+            <span class="stat-value" id="stat-ready">0</span>
+            <span class="stat-label">Ready</span>
+          </div>
+        </div>
+        <div class="stat-card running">
+          <div class="stat-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="5,3 19,12 5,21"/>
+            </svg>
+          </div>
+          <div class="stat-content">
+            <span class="stat-value" id="stat-running">0</span>
+            <span class="stat-label">Running</span>
+          </div>
+        </div>
+        <div class="stat-card done">
+          <div class="stat-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="20,6 9,17 4,12"/>
+            </svg>
+          </div>
+          <div class="stat-content">
+            <span class="stat-value" id="stat-done">0</span>
+            <span class="stat-label">Done</span>
+          </div>
+        </div>
+        <div class="stat-card failed">
+          <div class="stat-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="12" y1="8" x2="12" y2="12"/>
+              <line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+          </div>
+          <div class="stat-content">
+            <span class="stat-value" id="stat-failed">0</span>
+            <span class="stat-label">Failed</span>
+          </div>
+        </div>
+        <div class="stat-card dead">
+          <div class="stat-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="15" y1="9" x2="9" y2="15"/>
+              <line x1="9" y1="9" x2="15" y2="15"/>
+            </svg>
+          </div>
+          <div class="stat-content">
+            <span class="stat-value" id="stat-dead">0</span>
+            <span class="stat-label">Dead</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="workers-section" id="workers-section">
+      <h2>Workers</h2>
+      <div class="workers-grid" id="workers-grid">
+        <!-- Workers will be populated by JS -->
+      </div>
+    </section>
+
+    <section class="jobs-section">
+      <div class="jobs-header">
+        <h2>Jobs</h2>
+        <div class="jobs-filters">
+          <select id="status-filter">
+            <option value="">All Statuses</option>
+            <option value="ready">Ready</option>
+            <option value="running">Running</option>
+            <option value="done">Done</option>
+            <option value="failed">Failed</option>
+            <option value="dead">Dead</option>
+          </select>
+        </div>
+      </div>
+      
+      <div class="jobs-table-container">
+        <table class="jobs-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Queue</th>
+              <th>Status</th>
+              <th>Priority</th>
+              <th>Attempts</th>
+              <th>Created</th>
+              <th>Error</th>
+            </tr>
+          </thead>
+          <tbody id="jobs-tbody">
+            <!-- Jobs will be populated by JS -->
+          </tbody>
+        </table>
+      </div>
+
+      <div class="pagination">
+        <button id="prev-page" disabled>Previous</button>
+        <span id="page-info">Page 1</span>
+        <button id="next-page">Next</button>
+      </div>
+    </section>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
