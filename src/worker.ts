@@ -10,6 +10,7 @@ import type {
   JobStatus,
   Job,
   ClaimedJob,
+  WorkerState,
 } from './types.js';
 import { defaultBackoff, parsePayload, sleep, now } from './utils.js';
 
@@ -45,6 +46,8 @@ export function createWorker(options: WorkerOptions): WorkmaticWorker {
     pollMs = 1000,
     timeoutMs,
     backoff = defaultBackoff,
+    persistState = false,
+    autoRestore = true,
   } = options;
 
   if (!db) {
@@ -57,6 +60,67 @@ export function createWorker(options: WorkerOptions): WorkmaticWorker {
   let processor: JobProcessor<any> | null = null;
   let pumpTimeout: NodeJS.Timeout | null = null;
   let fastqQueue: queueAsPromised<ClaimedJob, void> | null = null;
+
+  /**
+   * Get the settings key for this worker's state
+   */
+  function getStateKey(): string {
+    return `worker_state_${queue}`;
+  }
+
+  /**
+   * Save worker state to database
+   */
+  async function saveState(state: WorkerState): Promise<void> {
+    if (!persistState) return;
+
+    const timestamp = now();
+    const key = getStateKey();
+
+    // Ensure settings table exists
+    await db.schema
+      .createTable('workmatic_settings')
+      .ifNotExists()
+      .addColumn('queue', 'text', (col) => col.primaryKey())
+      .addColumn('paused', 'integer', (col) => col.notNull().defaultTo(0))
+      .addColumn('updated_at', 'integer', (col) => col.notNull())
+      .execute()
+      .catch(() => {}); // Ignore if exists
+
+    // Use raw SQL for upsert since different SQLite versions have different syntax
+    await sql`
+      INSERT INTO workmatic_settings (queue, paused, updated_at)
+      VALUES (${key}, ${state === 'paused' ? 1 : state === 'running' ? 2 : 0}, ${timestamp})
+      ON CONFLICT(queue) DO UPDATE SET 
+        paused = ${state === 'paused' ? 1 : state === 'running' ? 2 : 0},
+        updated_at = ${timestamp}
+    `.execute(db);
+  }
+
+  /**
+   * Load worker state from database
+   */
+  async function loadState(): Promise<WorkerState | null> {
+    if (!persistState) return null;
+
+    try {
+      const key = getStateKey();
+      const result = await db
+        .selectFrom('workmatic_settings')
+        .select('paused')
+        .where('queue', '=', key)
+        .executeTakeFirst();
+
+      if (!result) return null;
+      
+      // paused: 0 = stopped, 1 = paused, 2 = running
+      if (result.paused === 2) return 'running';
+      if (result.paused === 1) return 'paused';
+      return 'stopped';
+    } catch {
+      return null;
+    }
+  }
 
   /**
    * Requeue jobs with expired leases
@@ -326,6 +390,9 @@ export function createWorker(options: WorkerOptions): WorkmaticWorker {
       // Create fastq queue
       fastqQueue = fastq.promise(processJob, concurrency);
 
+      // Save state to database
+      saveState('running').catch(() => {});
+
       // Start pump loop
       pump();
     },
@@ -348,14 +415,19 @@ export function createWorker(options: WorkerOptions): WorkmaticWorker {
         await fastqQueue.drained();
         fastqQueue = null;
       }
+
+      // Save state to database
+      await saveState('stopped');
     },
 
     pause(): void {
       paused = true;
+      saveState('paused').catch(() => {});
     },
 
     resume(): void {
       paused = false;
+      saveState('running').catch(() => {});
     },
 
     async stats(): Promise<JobStats> {
@@ -401,7 +473,28 @@ export function createWorker(options: WorkerOptions): WorkmaticWorker {
     get queue(): string {
       return queue;
     },
+
+    async restoreState(): Promise<WorkerState | null> {
+      const state = await loadState();
+      if (state === 'running' && processor) {
+        this.start();
+      } else if (state === 'paused' && processor) {
+        this.start();
+        this.pause();
+      }
+      return state;
+    },
   };
+
+  // Auto-restore state if enabled
+  if (persistState && autoRestore) {
+    // Use setImmediate to allow processor to be set first
+    setImmediate(async () => {
+      if (processor) {
+        await worker.restoreState();
+      }
+    });
+  }
 
   return worker;
 }

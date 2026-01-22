@@ -20,6 +20,7 @@ export type {
   JobStatus,
   JobStats,
   ClaimedJob,
+  WorkerState,
   
   // Options
   AddJobOptions,

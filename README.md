@@ -16,6 +16,7 @@ Workmatic combines the simplicity of fastq with SQLite persistence. No Redis, no
 - **Delayed**: Schedule jobs to run in the future
 - **Retries**: Automatic retries with exponential backoff
 - **Lease-based**: Prevents double processing with lease locks
+- **State Persistence**: Optionally persist worker state across restarts
 - **Dashboard**: Built-in web UI for monitoring
 - **Type-safe**: Full TypeScript support with Kysely
 
@@ -127,6 +128,8 @@ const worker = createWorker({
   pollMs: 1000,           // Optional: Poll interval when idle (default: 1000)
   timeoutMs: 60000,       // Optional: Job execution timeout in ms (default: none)
   backoff: (n) => 1000 * Math.pow(2, n),  // Optional: Retry backoff function
+  persistState: false,    // Optional: Persist worker state to database (default: false)
+  autoRestore: true,      // Optional: Auto-restore state on creation (default: true)
 });
 ```
 
@@ -184,6 +187,48 @@ const stats = await worker.stats();
 worker.isRunning;  // boolean
 worker.isPaused;   // boolean
 worker.queue;      // string
+```
+
+#### Persist State Mode
+
+When `persistState: true`, the worker's state (running/paused/stopped) is saved to the database. This is useful when you want the worker to remember its state across app restarts.
+
+```typescript
+const worker = createWorker({
+  db,
+  queue: 'emails',
+  persistState: true,   // Save state to database
+  autoRestore: true,    // Auto-restore on creation (default: true)
+});
+
+worker.process(async (job) => {
+  // ...
+});
+
+// Start the worker - state is saved as "running"
+worker.start();
+
+// Later, stop the worker - state is saved as "stopped"
+await worker.stop();
+
+// If the app restarts, the worker will NOT auto-start
+// because the last saved state was "stopped"
+```
+
+With `autoRestore: false`, you can manually control when to restore:
+
+```typescript
+const worker = createWorker({
+  db,
+  persistState: true,
+  autoRestore: false,  // Don't auto-restore
+});
+
+worker.process(async (job) => { /* ... */ });
+
+// Manually check and restore saved state
+const savedState = await worker.restoreState();
+console.log(`Restored state: ${savedState}`); // 'running' | 'paused' | 'stopped' | null
 ```
 
 ### `createDashboard(options)`

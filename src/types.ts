@@ -116,6 +116,11 @@ export interface ClientOptions {
 export type BackoffFunction = (attempts: number) => number;
 
 /**
+ * Worker state for persistence
+ */
+export type WorkerState = 'stopped' | 'running' | 'paused';
+
+/**
  * Options for creating a worker
  */
 export interface WorkerOptions {
@@ -133,6 +138,10 @@ export interface WorkerOptions {
   timeoutMs?: number;
   /** Backoff function for retries. Default: exponential */
   backoff?: BackoffFunction;
+  /** Persist worker state to database. Default: false */
+  persistState?: boolean;
+  /** Auto-restore worker state on creation. Default: true (only applies if persistState is true) */
+  autoRestore?: boolean;
 }
 
 /**
@@ -178,6 +187,8 @@ export interface WorkmaticWorker {
   resume(): void;
   /** Get job statistics */
   stats(): Promise<JobStats>;
+  /** Restore worker state from database (only when persistState is true) */
+  restoreState(): Promise<WorkerState | null>;
   /** Check if worker is running */
   readonly isRunning: boolean;
   /** Check if worker is paused */

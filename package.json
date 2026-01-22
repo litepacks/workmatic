@@ -1,6 +1,6 @@
 {
   "name": "workmatic",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "A persistent job queue for Node.js using SQLite",
   "type": "module",
   "main": "./dist/index.cjs",
