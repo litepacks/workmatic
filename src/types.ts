@@ -169,6 +169,8 @@ export interface WorkmaticClient {
   add<TPayload = unknown>(payload: TPayload, options?: AddJobOptions): Promise<AddJobResult>;
   /** Get job statistics */
   stats(): Promise<JobStats>;
+  /** Clear all jobs from the queue */
+  clear(options?: { status?: JobStatus }): Promise<number>;
 }
 
 /**
@@ -189,6 +191,8 @@ export interface WorkmaticWorker {
   stats(): Promise<JobStats>;
   /** Restore worker state from database (only when persistState is true) */
   restoreState(): Promise<WorkerState | null>;
+  /** Clear all jobs from the queue */
+  clear(options?: { status?: JobStatus }): Promise<number>;
   /** Check if worker is running */
   readonly isRunning: boolean;
   /** Check if worker is paused */

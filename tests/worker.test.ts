@@ -373,4 +373,99 @@ describe('createWorker', () => {
       expect(job!.last_error).toContain('timed out');
     });
   });
+
+  describe('clear', () => {
+    it('should clear all jobs from the queue', async () => {
+      const client = createClient({ db, queue: 'test-queue' });
+      const worker = createWorker({ db, queue: 'test-queue' });
+      
+      // Add some jobs
+      await client.add({ n: 1 });
+      await client.add({ n: 2 });
+      await client.add({ n: 3 });
+      
+      const statsBefore = await worker.stats();
+      expect(statsBefore.total).toBe(3);
+      
+      // Clear all jobs
+      const deleted = await worker.clear();
+      
+      expect(deleted).toBe(3);
+      
+      const statsAfter = await worker.stats();
+      expect(statsAfter.total).toBe(0);
+    });
+
+    it('should clear only jobs with specific status', async () => {
+      const client = createClient({ db, queue: 'test-queue' });
+      const worker = createWorker({ db, queue: 'test-queue', pollMs: 50 });
+      
+      // Add jobs
+      await client.add({ n: 1 });
+      await client.add({ n: 2 });
+      
+      // Process one to done
+      worker.process(async () => {});
+      worker.start();
+      
+      // Wait for at least one job to be processed
+      await new Promise(resolve => setTimeout(resolve, 300));
+      await worker.stop();
+      
+      const statsBefore = await worker.stats();
+      
+      // We should have at least one done job
+      if (statsBefore.done === 0) {
+        // If no jobs were processed, manually set one to done for testing
+        await db
+          .updateTable('workmatic_jobs')
+          .set({ status: 'done' })
+          .where('queue', '=', 'test-queue')
+          .where('status', '=', 'ready')
+          .limit(1)
+          .execute();
+      }
+      
+      const statsBeforeClear = await worker.stats();
+      expect(statsBeforeClear.done).toBeGreaterThanOrEqual(1);
+      
+      // Clear only done jobs
+      const deleted = await worker.clear({ status: 'done' });
+      
+      expect(deleted).toBeGreaterThanOrEqual(1);
+      
+      const statsAfter = await worker.stats();
+      expect(statsAfter.done).toBe(0);
+    });
+
+    it('should only clear jobs from the same queue', async () => {
+      const clientA = createClient({ db, queue: 'queue-a' });
+      const clientB = createClient({ db, queue: 'queue-b' });
+      const workerA = createWorker({ db, queue: 'queue-a' });
+      const workerB = createWorker({ db, queue: 'queue-b' });
+      
+      await clientA.add({ n: 1 });
+      await clientA.add({ n: 2 });
+      await clientB.add({ n: 3 });
+      
+      // Clear queue-a
+      const deleted = await workerA.clear();
+      
+      expect(deleted).toBe(2);
+      
+      const statsA = await workerA.stats();
+      const statsB = await workerB.stats();
+      
+      expect(statsA.total).toBe(0);
+      expect(statsB.total).toBe(1);
+    });
+
+    it('should return 0 when clearing empty queue', async () => {
+      const worker = createWorker({ db });
+      
+      const deleted = await worker.clear();
+      
+      expect(deleted).toBe(0);
+    });
+  });
 });

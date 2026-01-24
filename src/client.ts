@@ -122,5 +122,21 @@ export function createClient(options: ClientOptions): WorkmaticClient {
 
       return stats;
     },
+
+    /**
+     * Clear all jobs from the queue
+     */
+    async clear(options: { status?: JobStatus } = {}): Promise<number> {
+      let query = db
+        .deleteFrom('workmatic_jobs')
+        .where('queue', '=', queue);
+
+      if (options.status) {
+        query = query.where('status', '=', options.status);
+      }
+
+      const result = await query.execute();
+      return Number(result[0]?.numDeletedRows ?? 0);
+    },
   };
 }

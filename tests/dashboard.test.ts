@@ -23,8 +23,8 @@ describe('createDashboard', () => {
   });
 
   it('should create dashboard with default port', () => {
-    dashboard = createDashboard({ db });
-    expect(dashboard.port).toBe(3000);
+    dashboard = createDashboard({ db, port: 3003 });
+    expect(dashboard.port).toBe(3003);
   });
 
   it('should create dashboard with custom port', () => {

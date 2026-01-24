@@ -165,4 +165,89 @@ describe('createClient', () => {
       expect(statsB.total).toBe(1);
     });
   });
+
+  describe('clear', () => {
+    it('should clear all jobs from the queue', async () => {
+      const client = createClient({ db, queue: 'test-queue' });
+      
+      // Add some jobs
+      await client.add({ n: 1 });
+      await client.add({ n: 2 });
+      await client.add({ n: 3 });
+      
+      const statsBefore = await client.stats();
+      expect(statsBefore.total).toBe(3);
+      
+      // Clear all jobs
+      const deleted = await client.clear();
+      
+      expect(deleted).toBe(3);
+      
+      const statsAfter = await client.stats();
+      expect(statsAfter.total).toBe(0);
+    });
+
+    it('should clear only jobs with specific status', async () => {
+      const client = createClient({ db, queue: 'test-queue' });
+      
+      // Add jobs
+      await client.add({ n: 1 });
+      await client.add({ n: 2 });
+      
+      // Manually set one to done
+      await db
+        .updateTable('workmatic_jobs')
+        .set({ status: 'done' })
+        .where('queue', '=', 'test-queue')
+        .where('public_id', '=', (await db
+          .selectFrom('workmatic_jobs')
+          .select('public_id')
+          .where('queue', '=', 'test-queue')
+          .limit(1)
+          .executeTakeFirst())!.public_id)
+        .execute();
+      
+      const statsBefore = await client.stats();
+      expect(statsBefore.ready).toBe(1);
+      expect(statsBefore.done).toBe(1);
+      
+      // Clear only done jobs
+      const deleted = await client.clear({ status: 'done' });
+      
+      expect(deleted).toBe(1);
+      
+      const statsAfter = await client.stats();
+      expect(statsAfter.ready).toBe(1);
+      expect(statsAfter.done).toBe(0);
+      expect(statsAfter.total).toBe(1);
+    });
+
+    it('should only clear jobs from the same queue', async () => {
+      const clientA = createClient({ db, queue: 'queue-a' });
+      const clientB = createClient({ db, queue: 'queue-b' });
+      
+      await clientA.add({ n: 1 });
+      await clientA.add({ n: 2 });
+      await clientB.add({ n: 3 });
+      
+      // Clear queue-a
+      const deleted = await clientA.clear();
+      
+      expect(deleted).toBe(2);
+      
+      const statsA = await clientA.stats();
+      const statsB = await clientB.stats();
+      
+      expect(statsA.total).toBe(0);
+      expect(statsB.total).toBe(1);
+    });
+
+    it('should return 0 when clearing empty queue', async () => {
+      const client = createClient({ db });
+      
+      const deleted = await client.clear();
+      
+      expect(deleted).toBe(0);
+    });
+  });
 });

@@ -115,6 +115,20 @@ const stats = await client.stats();
 // { ready: 5, running: 2, done: 100, failed: 0, dead: 1, total: 108 }
 ```
 
+#### `client.clear(options?)`
+
+Clear all jobs from the queue.
+
+```typescript
+// Clear all jobs
+const deleted = await client.clear();
+console.log(`Deleted ${deleted} jobs`);
+
+// Clear only jobs with specific status
+const deleted = await client.clear({ status: 'done' });
+console.log(`Deleted ${deleted} done jobs`);
+```
+
 ### `createWorker(options)`
 
 Create a worker to process jobs from a queue.
@@ -179,6 +193,20 @@ Get job statistics for the queue.
 
 ```typescript
 const stats = await worker.stats();
+```
+
+#### `worker.clear(options?)`
+
+Clear all jobs from the queue.
+
+```typescript
+// Clear all jobs in the queue
+const deleted = await worker.clear();
+console.log(`Deleted ${deleted} jobs`);
+
+// Clear only jobs with specific status
+const deleted = await worker.clear({ status: 'dead' });
+console.log(`Deleted ${deleted} dead jobs`);
 ```
 
 #### Worker properties
