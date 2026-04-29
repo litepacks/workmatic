@@ -229,7 +229,7 @@ console.log(`Deleted ${deleted} done jobs`);</code></pre>
   concurrency: 1,         // Optional: Parallel job count (default: 1)
   leaseMs: 30000,         // Optional: Job lease duration in ms (default: 30000)
   pollMs: 1000,           // Optional: Poll interval when idle (default: 1000)
-  timeoutMs: 60000,       // Optional: Job execution timeout in ms (default: none)
+  timeoutMs: 60000,       // Optional: default 60000; set 0 to disable
   backoff: (n) => 1000 * Math.pow(2, n),  // Optional: Retry backoff function
   persistState: false,    // Optional: Persist worker state to database (default: false)
   autoRestore: true,      // Optional: Auto-restore state on creation (default: true)
@@ -445,7 +445,7 @@ app.use('/workmatic/*', (c) => {
             <tr><td><code>concurrency</code></td><td><code>1</code></td><td>Parallel job count</td></tr>
             <tr><td><code>leaseMs</code></td><td><code>30000</code></td><td>Lease duration during processing (ms)</td></tr>
             <tr><td><code>pollMs</code></td><td><code>1000</code></td><td>Poll interval when idle (ms)</td></tr>
-            <tr><td><code>timeoutMs</code></td><td><code>undefined</code></td><td>Execution timeout (fails job if exceeded)</td></tr>
+            <tr><td><code>timeoutMs</code></td><td><code>60000</code></td><td>Execution timeout in ms; <code>0</code> disables</td></tr>
             <tr><td><code>priority</code></td><td><code>0</code></td><td>Lower = processed first</td></tr>
             <tr><td><code>delayMs</code></td><td><code>0</code></td><td>Delay before job becomes available</td></tr>
             <tr><td><code>maxAttempts</code></td><td><code>3</code></td><td>Max processing attempts</td></tr>

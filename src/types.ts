@@ -142,7 +142,7 @@ export interface WorkerOptions {
   leaseMs?: number;
   /** Poll interval in ms when no jobs available. Default: 1000 */
   pollMs?: number;
-  /** Job execution timeout in ms. Default: undefined (no timeout) */
+  /** Job execution timeout in ms. Default: 60000 (1 min). Set to 0 to disable. */
   timeoutMs?: number;
   /** Backoff function for retries. Default: exponential */
   backoff?: BackoffFunction;

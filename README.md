@@ -160,7 +160,7 @@ const worker = createWorker({
   concurrency: 1,         // Optional: Parallel job count (default: 1)
   leaseMs: 30000,         // Optional: Job lease duration in ms (default: 30000)
   pollMs: 1000,           // Optional: Poll interval when idle (default: 1000)
-  timeoutMs: 60000,       // Optional: Job execution timeout in ms (default: none)
+  timeoutMs: 60000,       // Optional: Job execution timeout in ms (default: 60000). Use 0 for no limit
   backoff: (n) => 1000 * Math.pow(2, n),  // Optional: Retry backoff function
   persistState: false,    // Optional: Persist worker state to database (default: false)
   autoRestore: true,      // Optional: Auto-restore state on creation (default: true)
@@ -429,7 +429,7 @@ worker.process(async (job) => {
 | `concurrency` | `1` | Number of jobs to process in parallel |
 | `leaseMs` | `30000` | How long a job is "locked" during processing |
 | `pollMs` | `1000` | How often to check for new jobs when idle |
-| `timeoutMs` | `undefined` | Job execution timeout (fails job if exceeded) |
+| `timeoutMs` | `60000` | Job timeout in ms (`0` = no limit) |
 | `priority` | `0` | Job priority (lower = processed first) |
 | `delayMs` | `0` | Delay before job becomes available |
 | `maxAttempts` | `3` | Maximum processing attempts |

@@ -14,6 +14,9 @@ import type {
 } from './types.js';
 import { defaultBackoff, parsePayload, now } from './utils.js';
 
+/** Default job execution timeout when `timeoutMs` is omitted (1 minute). Use `timeoutMs: 0` for no limit. */
+export const DEFAULT_WORKER_TIMEOUT_MS = 60_000;
+
 /**
  * Create a job queue worker for processing jobs
  * 
@@ -44,7 +47,7 @@ export function createWorker(options: WorkerOptions): WorkmaticWorker {
     concurrency = 1,
     leaseMs = 30000,
     pollMs = 1000,
-    timeoutMs,
+    timeoutMs = DEFAULT_WORKER_TIMEOUT_MS,
     backoff = defaultBackoff,
     persistState = false,
     autoRestore = true,

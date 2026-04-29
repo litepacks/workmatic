@@ -7,7 +7,7 @@
 // Main exports
 export { createDatabase, getUnderlyingDb } from './database.js';
 export { createClient } from './client.js';
-export { createWorker } from './worker.js';
+export { createWorker, DEFAULT_WORKER_TIMEOUT_MS } from './worker.js';
 export { createDashboard, createDashboardMiddleware } from './dashboard.js';
 
 // Utility exports
