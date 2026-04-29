@@ -2,6 +2,8 @@
 
 A persistent job queue for Node.js using SQLite. Simple, reliable, and zero external dependencies beyond SQLite.
 
+**Full single-page reference (same material, browsable offline): [`docs/index.html`](docs/index.html)**.
+
 ## Why?
 
 I love [fastq](https://github.com/mcollina/fastq) - it's fast, simple, and has a great API. But it's in-memory only, which can be frustrating when you need jobs to survive process restarts or crashes.
@@ -62,6 +64,8 @@ worker.start();
 ```
 
 ## API Reference
+
+Browsable copy with anchored sections: **[`docs/index.html`](docs/index.html)** (API from [`#api-database`](docs/index.html#api-database)).
 
 ### `createDatabase(options)`
 

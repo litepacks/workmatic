@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="en" class="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="light dark" />
+  <meta name="description" content="Workmatic — persistent job queue for Node.js using SQLite: client, worker, lease-based processing, CLI, dashboard. Single-page reference." />
+  <title>Workmatic — documentation</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = { darkMode: 'class' }
+  </script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/typescript.min.js"></script>
+  <style>
+    html { scroll-behavior: smooth; }
+    pre { tab-size: 2; margin: 0; }
+    pre code { padding: 0; background: transparent; }
+    code { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 0.9em; }
+    .doc-section { scroll-margin-top: 2rem; }
+    table { border-collapse: collapse; }
+    th, td { border: 1px solid #e7e5e4; padding: 0.5rem 0.75rem; text-align: left; }
+    th { background: #f5f5f4; font-weight: 600; }
+    .dark th, .dark td { border-color: #334155; }
+    .dark th { background: #1e293b; }
+    .ascii { font-family: ui-monospace, monospace; font-size: 0.65rem; line-height: 1.35; overflow-x: auto; }
+    @media (min-width: 640px) { .ascii { font-size: 0.72rem; } }
+    @media (min-width: 1024px) { .ascii { font-size: 0.75rem; } }
+  </style>
+</head>
+<body class="bg-stone-50 text-slate-900 antialiased dark:bg-slate-950 dark:text-slate-100 transition-colors">
+  <div class="max-w-5xl mx-auto px-6 py-12">
+    <div class="flex items-center justify-between mb-10 gap-4 flex-wrap">
+      <nav class="flex flex-wrap gap-x-3 gap-y-2 text-sm leading-snug" aria-label="Page sections">
+        <a href="#overview" class="text-slate-500 hover:text-cyan-800 dark:text-slate-400 dark:hover:text-cyan-300">Overview</a>
+        <a href="#features" class="text-slate-500 hover:text-cyan-800 dark:text-slate-400 dark:hover:text-cyan-300">Features</a>
+        <a href="#installation" class="text-slate-500 hover:text-cyan-800 dark:text-slate-400 dark:hover:text-cyan-300">Install</a>
+        <a href="#quick-start" class="text-slate-500 hover:text-cyan-800 dark:text-slate-400 dark:hover:text-cyan-300">Quick start</a>
+        <a href="#api-database" class="text-slate-500 hover:text-cyan-800 dark:text-slate-400 dark:hover:text-cyan-300">createDatabase</a>
+        <a href="#api-client" class="text-slate-500 hover:text-cyan-800 dark:text-slate-400 dark:hover:text-cyan-300">createClient</a>
+        <a href="#api-worker" class="text-slate-500 hover:text-cyan-800 dark:text-slate-400 dark:hover:text-cyan-300">createWorker</a>
+        <a href="#api-dashboard" class="text-slate-500 hover:text-cyan-800 dark:text-slate-400 dark:hover:text-cyan-300">Dashboard API</a>
+        <a href="#dashboard-ui" class="text-slate-500 hover:text-cyan-800 dark:text-slate-400 dark:hover:text-cyan-300">Dashboard UI</a>
+        <a href="#job-object" class="text-slate-500 hover:text-cyan-800 dark:text-slate-400 dark:hover:text-cyan-300">Job object</a>
+        <a href="#durability" class="text-slate-500 hover:text-cyan-800 dark:text-slate-400 dark:hover:text-cyan-300">Durability</a>
+        <a href="#job-lifecycle" class="text-slate-500 hover:text-cyan-800 dark:text-slate-400 dark:hover:text-cyan-300">Lifecycle</a>
+        <a href="#options-glossary" class="text-slate-500 hover:text-cyan-800 dark:text-slate-400 dark:hover:text-cyan-300">Options</a>
+        <a href="#examples" class="text-slate-500 hover:text-cyan-800 dark:text-slate-400 dark:hover:text-cyan-300">Examples</a>
+        <a href="#benchmarks" class="text-slate-500 hover:text-cyan-800 dark:text-slate-400 dark:hover:text-cyan-300">Benchmarks</a>
+        <a href="#cli" class="text-slate-500 hover:text-cyan-800 dark:text-slate-400 dark:hover:text-cyan-300">CLI</a>
+        <a href="#architecture" class="text-slate-500 hover:text-cyan-800 dark:text-slate-400 dark:hover:text-cyan-300">Architecture</a>
+        <a href="#development" class="text-slate-500 hover:text-cyan-800 dark:text-slate-400 dark:hover:text-cyan-300">Development</a>
+      </nav>
+      <button id="theme-toggle" type="button" class="p-2 rounded-lg text-slate-500 hover:bg-stone-200 hover:text-cyan-800 dark:hover:bg-slate-800 dark:text-slate-400 dark:hover:text-cyan-300 shrink-0" aria-label="Toggle dark mode">
+        <svg class="w-5 h-5 hidden dark:block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+        <svg class="w-5 h-5 block dark:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/></svg>
+      </button>
+    </div>
+
+    <header class="mb-14 flex items-start gap-5">
+      <div class="flex-shrink-0 w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-500/25 via-cyan-500/15 to-slate-800/20 dark:from-amber-400/20 dark:via-cyan-500/10 dark:to-slate-900/40 border border-amber-500/35 dark:border-cyan-500/25 flex items-center justify-center shadow-md shadow-amber-900/5 dark:shadow-cyan-900/20" aria-hidden="true">
+        <svg class="w-[2.6rem] h-[2.6rem] text-amber-900 dark:text-cyan-300" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <path d="M5 9h14v10a2 2 0 01-2 2H7a2 2 0 01-2-2V9z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+          <path d="M5 9V7a3 3 0 013-3h8a3 3 0 013 3v2M9 13h6M9 17h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          <path d="M8 5V4M12 5V3M16 5V4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" opacity="0.6"/>
+        </svg>
+      </div>
+      <div class="min-w-0">
+        <p class="text-sm font-semibold uppercase tracking-wide text-cyan-800 dark:text-cyan-400 mb-1">SQLite job queue · Node.js</p>
+        <h1 class="text-4xl font-bold text-slate-900 dark:text-white tracking-tight">Workmatic</h1>
+        <p class="mt-4 text-lg text-slate-600 dark:text-slate-400 leading-relaxed max-w-prose">
+          A persistent job queue for Node.js using SQLite. Simple, reliable, and zero external dependencies beyond SQLite.
+        </p>
+        <p class="mt-2 text-sm text-slate-500 dark:text-slate-500">
+          Full reference (mirrors README) — open this file locally or from the repo. Requires <strong class="text-slate-700 dark:text-slate-400">Node.js 18+</strong>.
+        </p>
+      </div>
+    </header>
+
+    <section id="overview" class="doc-section mb-14">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">Why?</h2>
+      <p class="text-slate-600 dark:text-slate-400 mb-4 leading-relaxed">
+        <a href="https://github.com/mcollina/fastq" class="text-cyan-800 dark:text-cyan-400 hover:underline">fastq</a> is fast and simple—but in-memory only. Workmatic combines that API feel with SQLite persistence: no Redis, no extra services—just a single file keeping jobs safe for small-to-medium workloads.
+      </p>
+      <div class="grid sm:grid-cols-2 gap-3 text-sm">
+        <div class="rounded-xl border border-stone-200 dark:border-slate-700 bg-white/60 dark:bg-slate-900/40 p-4">
+          <h3 class="font-semibold text-slate-800 dark:text-slate-200 mb-2">Fits well when…</h3>
+          <ul class="list-disc pl-4 text-slate-600 dark:text-slate-400 space-y-1">
+            <li>You need durability without new infrastructure</li>
+            <li>Single-machine or embedded SQLite deployments</li>
+            <li>TypeScript + predictable queue semantics</li>
+          </ul>
+        </div>
+        <div class="rounded-xl border border-stone-200 dark:border-slate-700 bg-white/60 dark:bg-slate-900/40 p-4">
+          <h3 class="font-semibold text-slate-800 dark:text-slate-200 mb-2">Core ideas</h3>
+          <ul class="list-disc pl-4 text-slate-600 dark:text-slate-400 space-y-1">
+            <li>Lease-based claiming (at-least-once)</li>
+            <li>Optional worker state persisted in DB</li>
+            <li>Kysely + better-sqlite3 under the hood</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section id="features" class="doc-section mb-14">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">Features</h2>
+      <ul class="list-disc pl-5 text-slate-600 dark:text-slate-400 space-y-3">
+        <li><strong class="text-slate-800 dark:text-slate-200">Persistent</strong> — Jobs survive restarts via SQLite storage</li>
+        <li><strong class="text-slate-800 dark:text-slate-200">Concurrent</strong> — Process multiple jobs with fastq</li>
+        <li><strong class="text-slate-800 dark:text-slate-200">Priority</strong> — Higher-priority jobs first</li>
+        <li><strong class="text-slate-800 dark:text-slate-200">Delayed</strong> — Schedule jobs for the future</li>
+        <li><strong class="text-slate-800 dark:text-slate-200">Retries</strong> — Automatic retries with exponential backoff</li>
+        <li><strong class="text-slate-800 dark:text-slate-200">Lease-based</strong> — Prevents double processing with leases</li>
+        <li><strong class="text-slate-800 dark:text-slate-200">State persistence</strong> — Optional worker state across restarts</li>
+        <li><strong class="text-slate-800 dark:text-slate-200">Dashboard</strong> — Built-in web UI (see <a href="#dashboard-ui" class="text-cyan-800 dark:text-cyan-400 hover:underline">Dashboard UI</a>)</li>
+        <li><strong class="text-slate-800 dark:text-slate-200">Type-safe</strong> — TypeScript + Kysely</li>
+      </ul>
+    </section>
+
+    <section id="installation" class="doc-section mb-14">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">Installation</h2>
+      <p class="text-slate-600 dark:text-slate-400 mb-3">Requires <strong class="text-slate-800 dark:text-slate-200">Node.js 18+</strong>.</p>
+      <pre class="bg-slate-900 p-5 rounded-xl text-sm overflow-x-auto mb-4"><code class="language-bash">npm install workmatic</code></pre>
+    </section>
+
+    <section id="quick-start" class="doc-section mb-14">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">Quick start</h2>
+      <pre class="bg-slate-900 p-5 rounded-xl text-sm overflow-x-auto"><code class="language-typescript">import { createDatabase, createClient, createWorker } from 'workmatic';
+
+// Create database (use file path for persistence)
+const db = createDatabase({ filename: './jobs.db' });
+
+// Create a client to add jobs
+const client = createClient({ db, queue: 'emails' });
+
+// Add a job
+const { id } = await client.add({ 
+  to: 'user@example.com', 
+  subject: 'Hello!' 
+});
+console.log(`Job created: ${id}`);
+
+// Create a worker to process jobs
+const worker = createWorker({
+  db,
+  queue: 'emails',
+  concurrency: 4,
+});
+
+// Define the processor
+worker.process(async (job) => {
+  console.log(`Sending email to ${job.payload.to}`);
+  await sendEmail(job.payload);
+});
+
+// Start processing
+worker.start();</code></pre>
+    </section>
+
+    <section id="api-database" class="doc-section mb-14">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">API Reference — <code class="text-xl">createDatabase(options)</code></h2>
+      <p class="text-slate-600 dark:text-slate-400 mb-4">Initialize the database connection and schema.</p>
+      <pre class="bg-slate-900 p-5 rounded-xl text-sm overflow-x-auto"><code class="language-typescript">const db = createDatabase({
+  // Option 1: File path (creates or opens existing)
+  filename: './jobs.db',
+  
+  // Option 2: In-memory (for testing)
+  filename: ':memory:',
+  
+  // Option 3: Existing better-sqlite3 instance
+  db: existingSqliteInstance,
+});</code></pre>
+    </section>
+
+    <section id="api-client" class="doc-section mb-14">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4"><code class="text-xl">createClient(options)</code></h2>
+      <p class="text-slate-600 dark:text-slate-400 mb-4">Create a client for adding jobs to a queue.</p>
+      <pre class="bg-slate-900 p-5 rounded-xl text-sm overflow-x-auto mb-8"><code class="language-typescript">const client = createClient({
+  db,                    // Required: Database instance
+  queue: 'default',      // Optional: Queue name (default: 'default')
+});</code></pre>
+
+      <h3 id="client-add" class="text-lg font-semibold text-slate-800 dark:text-slate-200 mb-3 scroll-mt-20"><code>client.add(payload, options?)</code></h3>
+      <p class="text-slate-600 dark:text-slate-400 mb-3">Add a job to the queue.</p>
+      <pre class="bg-slate-900 p-5 rounded-xl text-sm overflow-x-auto mb-8"><code class="language-typescript">const { ok, id } = await client.add(
+  { email: 'user@example.com' },  // Payload (must be JSON-serializable)
+  {
+    priority: 0,      // Lower = higher priority (default: 0)
+    delayMs: 5000,    // Delay before job becomes available (default: 0)
+    maxAttempts: 3,   // Max retry attempts (default: 3)
+  }
+);</code></pre>
+
+      <h3 class="text-lg font-semibold text-slate-800 dark:text-slate-200 mb-3"><code>client.stats()</code></h3>
+      <p class="text-slate-600 dark:text-slate-400 mb-3">Get job statistics for the queue.</p>
+      <pre class="bg-slate-900 p-5 rounded-xl text-sm overflow-x-auto mb-8"><code class="language-typescript">const stats = await client.stats();
+// { ready: 5, running: 2, done: 100, failed: 0, dead: 1, total: 108 }</code></pre>
+
+      <h3 class="text-lg font-semibold text-slate-800 dark:text-slate-200 mb-3"><code>client.clear(options?)</code></h3>
+      <p class="text-slate-600 dark:text-slate-400 mb-3">Clear all jobs from the queue.</p>
+      <pre class="bg-slate-900 p-5 rounded-xl text-sm overflow-x-auto"><code class="language-typescript">// Clear all jobs
+const deleted = await client.clear();
+console.log(`Deleted ${deleted} jobs`);
+
+// Clear only jobs with specific status
+const deleted = await client.clear({ status: 'done' });
+console.log(`Deleted ${deleted} done jobs`);</code></pre>
+    </section>
+
+    <section id="api-worker" class="doc-section mb-14">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4"><code class="text-xl">createWorker(options)</code></h2>
+      <p class="text-slate-600 dark:text-slate-400 mb-4">Create a worker to process jobs from a queue.</p>
+      <pre class="bg-slate-900 p-5 rounded-xl text-sm overflow-x-auto mb-8"><code class="language-typescript">const worker = createWorker({
+  db,                     // Required: Database instance
+  queue: 'default',       // Optional: Queue name (default: 'default')
+  concurrency: 1,         // Optional: Parallel job count (default: 1)
+  leaseMs: 30000,         // Optional: Job lease duration in ms (default: 30000)
+  pollMs: 1000,           // Optional: Poll interval when idle (default: 1000)
+  timeoutMs: 60000,       // Optional: Job execution timeout in ms (default: none)
+  backoff: (n) => 1000 * Math.pow(2, n),  // Optional: Retry backoff function
+  persistState: false,    // Optional: Persist worker state to database (default: false)
+  autoRestore: true,      // Optional: Auto-restore state on creation (default: true)
+});</code></pre>
+
+      <h3 class="text-lg font-semibold text-slate-800 dark:text-slate-200 mb-3"><code>worker.process(fn)</code></h3>
+      <pre class="bg-slate-900 p-5 rounded-xl text-sm overflow-x-auto mb-6"><code class="language-typescript">worker.process(async (job) => {
+  console.log(`Processing job ${job.id}`);
+  console.log(`Payload:`, job.payload);
+  console.log(`Attempt ${job.attempts + 1} of ${job.maxAttempts}`);
+  
+  // Do work here
+  // Throw an error to trigger retry
+});</code></pre>
+
+      <div class="grid sm:grid-cols-2 gap-4 mb-8">
+        <div>
+          <h3 class="text-lg font-semibold text-slate-800 dark:text-slate-200 mb-2"><code>worker.start()</code></h3>
+          <pre class="bg-slate-900 p-5 rounded-xl text-sm overflow-x-auto"><code class="language-typescript">worker.start();</code></pre>
+        </div>
+        <div>
+          <h3 class="text-lg font-semibold text-slate-800 dark:text-slate-200 mb-2"><code>worker.stop()</code></h3>
+          <pre class="bg-slate-900 p-5 rounded-xl text-sm overflow-x-auto"><code class="language-typescript">await worker.stop();</code></pre>
+        </div>
+      </div>
+
+      <h3 class="text-lg font-semibold text-slate-800 dark:text-slate-200 mb-3"><code>worker.pause()</code> / <code>worker.resume()</code></h3>
+      <pre class="bg-slate-900 p-5 rounded-xl text-sm overflow-x-auto mb-6"><code class="language-typescript">worker.pause();   // Stop claiming new jobs
+worker.resume();  // Resume claiming jobs</code></pre>
+
+      <h3 class="text-lg font-semibold text-slate-800 dark:text-slate-200 mb-3"><code>worker.stats()</code></h3>
+      <pre class="bg-slate-900 p-5 rounded-xl text-sm overflow-x-auto mb-6"><code class="language-typescript">const stats = await worker.stats();</code></pre>
+
+      <h3 class="text-lg font-semibold text-slate-800 dark:text-slate-200 mb-3"><code>worker.clear(options?)</code></h3>
+      <pre class="bg-slate-900 p-5 rounded-xl text-sm overflow-x-auto mb-8"><code class="language-typescript">// Clear all jobs in the queue
+const deleted = await worker.clear();
+console.log(`Deleted ${deleted} jobs`);
+
+// Clear only jobs with specific status
+const deleted = await worker.clear({ status: 'dead' });
+console.log(`Deleted ${deleted} dead jobs`);</code></pre>
+
+      <h3 class="text-lg font-semibold text-slate-800 dark:text-slate-200 mb-3">Worker properties</h3>
+      <pre class="bg-slate-900 p-5 rounded-xl text-sm overflow-x-auto mb-8"><code class="language-typescript">worker.isRunning;  // boolean
+worker.isPaused;   // boolean
+worker.queue;      // string</code></pre>
+
+      <h3 class="text-lg font-semibold text-slate-800 dark:text-slate-200 mb-3">Persist state mode</h3>
+      <p class="text-slate-600 dark:text-slate-400 mb-4">When <code class="bg-stone-200 dark:bg-slate-700 px-1 rounded">persistState: true</code>, worker state (running/paused/stopped) is saved—useful to remember state across restarts.</p>
+      <pre class="bg-slate-900 p-5 rounded-xl text-sm overflow-x-auto mb-8"><code class="language-typescript">const worker = createWorker({
+  db,
+  queue: 'emails',
+  persistState: true,   // Save state to database
+  autoRestore: true,    // Auto-restore on creation (default: true)
+});
+
+worker.process(async (job) => {
+  // ...
+});
+
+// Start the worker - state is saved as "running"
+worker.start();
+
+// Later, stop the worker - state is saved as "stopped"
+await worker.stop();
+
+// If the app restarts, the worker will NOT auto-start
+// because the last saved state was "stopped"</code></pre>
+      <p class="text-slate-600 dark:text-slate-400 mb-4">With <code class="bg-stone-200 dark:bg-slate-700 px-1 rounded">autoRestore: false</code>, restore manually:</p>
+      <pre class="bg-slate-900 p-5 rounded-xl text-sm overflow-x-auto"><code class="language-typescript">const worker = createWorker({
+  db,
+  persistState: true,
+  autoRestore: false,  // Don't auto-restore
+});
+
+worker.process(async (job) => { /* ... */ });
+
+// Manually check and restore saved state
+const savedState = await worker.restoreState();
+console.log(`Restored state: ${savedState}`); // 'running' | 'paused' | 'stopped' | null</code></pre>
+    </section>
+
+    <section id="api-dashboard" class="doc-section mb-14">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4"><code class="text-xl">createDashboard(options)</code></h2>
+      <p class="text-slate-600 dark:text-slate-400 mb-4">Standalone dashboard server.</p>
+      <pre class="bg-slate-900 p-5 rounded-xl text-sm overflow-x-auto mb-12"><code class="language-typescript">const dashboard = createDashboard({
+  db,                    // Required: Database instance
+  port: 3000,            // Optional: HTTP port (default: 3000)
+  workers: [worker1],    // Optional: Workers to control
+});
+
+console.log(`Dashboard at http://localhost:${dashboard.port}`);
+
+// Later, close the server
+await dashboard.close();</code></pre>
+
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4"><code class="text-xl">createDashboardMiddleware(options)</code></h2>
+      <p class="text-slate-600 dark:text-slate-400 mb-4">Express-compatible middleware to mount on an existing app.</p>
+      <pre class="bg-slate-900 p-5 rounded-xl text-sm overflow-x-auto mb-8"><code class="language-typescript">import express from 'express';
+import { createDashboardMiddleware } from 'workmatic';
+
+const app = express();
+
+// Mount dashboard at /workmatic
+app.use(createDashboardMiddleware({
+  db,                        // Required: Database instance
+  basePath: '/workmatic',    // Optional: URL prefix (default: '')
+  workers: [worker],         // Optional: Workers to control
+}));
+
+app.listen(3000);
+// Dashboard available at http://localhost:3000/workmatic</code></pre>
+
+      <p class="text-slate-600 dark:text-slate-400 mb-4">Works with any stack that supports <code class="bg-stone-200 dark:bg-slate-700 px-1 rounded">(req, res, next)</code> middleware:</p>
+      <pre class="bg-slate-900 p-5 rounded-xl text-sm overflow-x-auto mb-8"><code class="language-typescript">// Fastify
+import fastify from 'fastify';
+import middie from '@fastify/middie';
+
+const app = fastify();
+await app.register(middie);
+app.use(createDashboardMiddleware({ db, basePath: '/jobs' }));
+
+// Hono
+import { Hono } from 'hono';
+
+const app = new Hono();
+app.use('/workmatic/*', (c) => {
+  return new Promise((resolve) => {
+    const middleware = createDashboardMiddleware({ db, basePath: '/workmatic' });
+    middleware(c.env.incoming, c.env.outgoing, resolve);
+  });
+});</code></pre>
+    </section>
+
+    <section id="job-object" class="doc-section mb-14">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">Job object</h2>
+      <p class="text-slate-600 dark:text-slate-400 mb-4">The job passed to processors:</p>
+      <pre class="bg-slate-900 p-5 rounded-xl text-sm overflow-x-auto"><code class="language-typescript">interface Job&lt;TPayload&gt; {
+  id: string;           // Unique public ID (nanoid)
+  queue: string;        // Queue name
+  payload: TPayload;    // Your job data
+  status: JobStatus;    // 'ready' | 'running' | 'done' | 'failed' | 'dead'
+  priority: number;     // Priority value
+  attempts: number;     // Current attempt count (starts at 0)
+  maxAttempts: number;  // Maximum attempts allowed
+  createdAt: number;    // Unix timestamp (ms)
+  lastError: string | null;  // Last error message
+}</code></pre>
+    </section>
+
+    <section id="durability" class="doc-section mb-14">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">Durability model</h2>
+      <p class="text-slate-600 dark:text-slate-400 mb-4">Workmatic provides <strong class="text-slate-800 dark:text-slate-200">at-least-once</strong> delivery:</p>
+      <ul class="list-disc pl-5 text-slate-600 dark:text-slate-400 space-y-2 mb-6">
+        <li>Jobs are persisted to SQLite before <code class="bg-stone-200 dark:bg-slate-700 px-1 rounded">add()</code> returns</li>
+        <li>A job may run more than once if the worker crashes or the lease expires before completion</li>
+        <li>Jobs are only marked <code class="bg-stone-200 dark:bg-slate-700 px-1 rounded">done</code> after successful processing</li>
+      </ul>
+      <h3 class="text-lg font-semibold text-slate-800 dark:text-slate-200 mb-3">Idempotency recommendation</h3>
+      <pre class="bg-slate-900 p-5 rounded-xl text-sm overflow-x-auto"><code class="language-typescript">worker.process(async (job) => {
+  // Check if already processed
+  const exists = await db.checkProcessed(job.id);
+  if (exists) return;
+  
+  // Process the job
+  await processPayment(job.payload);
+  
+  // Mark as processed
+  await db.markProcessed(job.id);
+});</code></pre>
+    </section>
+
+    <section id="job-lifecycle" class="doc-section mb-14">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">Job lifecycle</h2>
+      <pre class="ascii bg-stone-100 dark:bg-slate-900/80 border border-stone-200 dark:border-slate-700 rounded-xl p-4 text-slate-700 dark:text-slate-300">┌─────────┐     add()      ┌─────────┐
+│  NEW    │ ─────────────▶ │  READY  │
+└─────────┘                └────┬────┘
+                               │
+                         claim  │
+                               ▼
+                         ┌─────────┐
+                         │ RUNNING │
+                         └────┬────┘
+                              │
+             ┌────────────────┼────────────────┐
+             │                │                │
+        success          failure          failure
+             │          (retries           (max
+             │           left)           attempts)
+             ▼                │                │
+       ┌─────────┐           │                ▼
+       │  DONE   │           │          ┌─────────┐
+       └─────────┘           │          │  DEAD   │
+                             │          └─────────┘
+                             │
+                             ▼
+                   ┌─────────────────┐
+                   │  READY (retry)  │
+                   │  with backoff   │
+                   └─────────────────┘</pre>
+    </section>
+
+    <section id="options-glossary" class="doc-section mb-14">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">Options glossary</h2>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead><tr><th>Option</th><th>Default</th><th>Description</th></tr></thead>
+          <tbody class="text-slate-600 dark:text-slate-400">
+            <tr><td><code>queue</code></td><td><code>'default'</code></td><td>Queue name for job isolation</td></tr>
+            <tr><td><code>concurrency</code></td><td><code>1</code></td><td>Parallel job count</td></tr>
+            <tr><td><code>leaseMs</code></td><td><code>30000</code></td><td>Lease duration during processing (ms)</td></tr>
+            <tr><td><code>pollMs</code></td><td><code>1000</code></td><td>Poll interval when idle (ms)</td></tr>
+            <tr><td><code>timeoutMs</code></td><td><code>undefined</code></td><td>Execution timeout (fails job if exceeded)</td></tr>
+            <tr><td><code>priority</code></td><td><code>0</code></td><td>Lower = processed first</td></tr>
+            <tr><td><code>delayMs</code></td><td><code>0</code></td><td>Delay before job becomes available</td></tr>
+            <tr><td><code>maxAttempts</code></td><td><code>3</code></td><td>Max processing attempts</td></tr>
+            <tr><td><code>backoff</code></td><td><code>2^n * 1000</code></td><td>Retry delay function (returns ms)</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="dashboard-ui" class="doc-section mb-14">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">Dashboard (built-in UI)</h2>
+      <ul class="list-disc pl-5 text-slate-600 dark:text-slate-400 space-y-2 mb-4">
+        <li>Real-time job statistics</li>
+        <li>Job list with filtering and pagination</li>
+        <li>Worker status and control (pause/resume)</li>
+        <li>Auto-refresh every 2 seconds</li>
+      </ul>
+      <p class="text-slate-500 dark:text-slate-500 text-sm">README references <code class="bg-stone-200 dark:bg-slate-700 px-1 rounded">dashboard-screenshot.png</code>. Add that image at the repository root if you want a screenshot in README; this HTML docs page omits it until the asset exists.</p>
+    </section>
+
+    <section id="examples" class="doc-section mb-14">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">Examples</h2>
+      <ul class="list-disc pl-5 text-slate-600 dark:text-slate-400 space-y-2 mb-4">
+        <li><code class="bg-stone-200 dark:bg-slate-700 px-1 rounded">basic.ts</code> — Simple job processing</li>
+        <li><code class="bg-stone-200 dark:bg-slate-700 px-1 rounded">advanced.ts</code> — Priority, delays, retries</li>
+        <li><code class="bg-stone-200 dark:bg-slate-700 px-1 rounded">with-dashboard.ts</code> — Dashboard monitoring</li>
+      </ul>
+      <pre class="bg-slate-900 p-5 rounded-xl text-sm overflow-x-auto"><code class="language-bash">npx tsx examples/basic.ts
+npx tsx examples/with-dashboard.ts</code></pre>
+    </section>
+
+    <section id="benchmarks" class="doc-section mb-14">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">Benchmarks</h2>
+      <pre class="bg-slate-900 p-5 rounded-xl text-sm overflow-x-auto mb-6"><code class="language-bash"># In-memory (fastest, for testing)
+npm run bench
+
+# File-based (realistic, persistent)
+npm run bench -- --file</code></pre>
+      <h3 class="text-lg font-semibold text-slate-800 dark:text-slate-200 mb-3">Results comparison</h3>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead><tr><th>Benchmark</th><th>In-Memory</th><th>File-based</th></tr></thead>
+          <tbody class="text-slate-600 dark:text-slate-400">
+            <tr><td>Sequential Insert</td><td>27,000/s</td><td>13,000/s</td></tr>
+            <tr><td>Parallel Insert</td><td>23,000/s</td><td>12,000/s</td></tr>
+            <tr><td>Process (concurrency=1)</td><td>1,100/s</td><td>1,100/s</td></tr>
+            <tr><td>Process (concurrency=4)</td><td>4,800/s</td><td>4,800/s</td></tr>
+            <tr><td>Process (concurrency=8)</td><td>10,000/s</td><td>8,300/s</td></tr>
+            <tr><td>Process (concurrency=16)</td><td>18,000/s</td><td>5,700/s</td></tr>
+            <tr><td>Mixed Insert+Process</td><td>7,500/s</td><td>3,500/s</td></tr>
+            <tr><td>Claim + Process Batch</td><td>23,600/s</td><td>11,800/s</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="text-slate-600 dark:text-slate-400 mt-4 text-sm"><strong>Note:</strong> File-based throughput drops at high concurrency due to disk I/O; <code class="bg-stone-200 dark:bg-slate-700 px-1 rounded">concurrency=8</code> is often a sweet spot.</p>
+    </section>
+
+    <section id="cli" class="doc-section mb-14">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">CLI</h2>
+      <p class="text-slate-600 dark:text-slate-400 mb-4">Manage jobs directly from the database file:</p>
+      <pre class="bg-slate-900 p-5 rounded-xl text-sm overflow-x-auto mb-8"><code class="language-bash"># Show job statistics
+npx workmatic stats ./jobs.db
+
+# List queues with pause status
+npx workmatic queues ./jobs.db
+
+# Pause/resume a queue (workers stop/start claiming new jobs)
+npx workmatic pause ./jobs.db emails
+npx workmatic resume ./jobs.db emails
+
+# List jobs (with filters)
+npx workmatic list ./jobs.db --status=dead --limit=10
+
+# Export jobs to CSV
+npx workmatic export ./jobs.db backup.csv
+npx workmatic export ./jobs.db --status=failed &gt; failed.csv
+
+# Import jobs from CSV
+npx workmatic import ./jobs.db backup.csv
+
+# Delete jobs by status
+npx workmatic purge ./jobs.db --status=done
+
+# Retry dead/failed jobs (reset to ready)
+npx workmatic retry ./jobs.db --status=dead</code></pre>
+
+      <h3 class="text-lg font-semibold text-slate-800 dark:text-slate-200 mb-3">CLI commands</h3>
+      <div class="overflow-x-auto mb-8">
+        <table class="w-full text-sm">
+          <thead><tr><th>Command</th><th>Description</th></tr></thead>
+          <tbody class="text-slate-600 dark:text-slate-400">
+            <tr><td><code>stats &lt;db&gt;</code></td><td>Job counts by status and queue</td></tr>
+            <tr><td><code>queues &lt;db&gt;</code></td><td>List queues + pause status</td></tr>
+            <tr><td><code>pause &lt;db&gt; &lt;queue&gt;</code></td><td>Pause a queue</td></tr>
+            <tr><td><code>resume &lt;db&gt; &lt;queue&gt;</code></td><td>Resume a queue</td></tr>
+            <tr><td><code>list &lt;db&gt;</code></td><td>List jobs (filters optional)</td></tr>
+            <tr><td><code>export &lt;db&gt; [file]</code></td><td>CSV export (stdout if no file)</td></tr>
+            <tr><td><code>import &lt;db&gt; &lt;file&gt;</code></td><td>Import from CSV</td></tr>
+            <tr><td><code>purge &lt;db&gt; --status=X</code></td><td>Delete by status</td></tr>
+            <tr><td><code>retry &lt;db&gt; --status=X</code></td><td>Reset jobs to ready</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 class="text-lg font-semibold text-slate-800 dark:text-slate-200 mb-3">CLI options</h3>
+      <div class="overflow-x-auto mb-8">
+        <table class="w-full text-sm">
+          <thead><tr><th>Option</th><th>Description</th></tr></thead>
+          <tbody class="text-slate-600 dark:text-slate-400">
+            <tr><td><code>--status=&lt;status&gt;</code></td><td><code>ready</code> / <code>running</code> / <code>done</code> / <code>failed</code> / <code>dead</code></td></tr>
+            <tr><td><code>--queue=&lt;queue&gt;</code></td><td>Filter by queue name</td></tr>
+            <tr><td><code>--limit=&lt;n&gt;</code></td><td>Limit results (default 100)</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 class="text-lg font-semibold text-slate-800 dark:text-slate-200 mb-3">Live pause/resume</h3>
+      <ul class="list-disc pl-5 text-slate-600 dark:text-slate-400 space-y-2 mb-8">
+        <li>Running workers stop claiming new jobs immediately when you pause</li>
+        <li>In-flight jobs still complete</li>
+        <li><code class="bg-stone-200 dark:bg-slate-700 px-1 rounded">resume</code> restores claiming</li>
+      </ul>
+
+      <h3 class="text-lg font-semibold text-slate-800 dark:text-slate-200 mb-3">CSV import (AI workflows)</h3>
+      <pre class="bg-stone-100 dark:bg-slate-900/80 border border-stone-200 dark:border-slate-700 rounded-xl p-4 text-sm overflow-x-auto mb-4">public_id,queue,payload,status,priority,run_at,attempts,max_attempts,lease_until,created_at,updated_at,last_error
+job_001,emails,"{""to"":""user@example.com"",""template"":""welcome""}",ready,0,1704067200000,0,3,0,1704067200000,1704067200000,
+job_002,emails,"{""to"":""other@example.com"",""template"":""reminder""}",ready,5,1704067200000,0,3,0,1704067200000,1704067200000,</pre>
+      <pre class="bg-slate-900 p-5 rounded-xl text-sm overflow-x-auto"><code class="language-bash">npx workmatic import ./jobs.db jobs.csv
+cat ai-generated-jobs.csv | npx workmatic import ./jobs.db /dev/stdin</code></pre>
+    </section>
+
+    <section id="architecture" class="doc-section mb-14">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">Architecture</h2>
+      <pre class="ascii bg-stone-100 dark:bg-slate-900/80 border border-stone-200 dark:border-slate-700 rounded-xl p-4 text-slate-700 dark:text-slate-300">┌──────────────────────────────────────────────────────────┐
+│                        Your App                          │
+├────────────────────┬─────────────────────────────────────┤
+│      Client        │              Worker                 │
+│  ┌─────────────┐   │   ┌─────────────┐  ┌─────────────┐  │
+│  │   add()     │   │   │   pump()    │  │   fastq     │  │
+│  │   stats()   │   │   │   claim()   │  │   pool      │  │
+│  └─────────────┘   │   └─────────────┘  └─────────────┘  │
+├────────────────────┴─────────────────────────────────────┤
+│                    Kysely (Query Builder)                │
+├──────────────────────────────────────────────────────────┤
+│                  better-sqlite3 (SQLite)                 │
+├──────────────────────────────────────────────────────────┤
+│                      jobs.db (File)                      │
+└──────────────────────────────────────────────────────────┘</pre>
+    </section>
+
+    <section id="development" class="doc-section mb-14">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">Development &amp; testing</h2>
+      <p class="text-slate-600 dark:text-slate-400 mb-4">The repository uses <strong class="text-slate-800 dark:text-slate-200">Vitest</strong> for unit tests.</p>
+      <pre class="bg-slate-900 p-5 rounded-xl text-sm overflow-x-auto mb-4"><code class="language-bash">npm test
+npm run test:watch</code></pre>
+      <p class="text-slate-500 dark:text-slate-500 text-sm leading-relaxed">Build before publish: <code class="bg-stone-200 dark:bg-slate-700 px-1 rounded">npm run build</code> (<code class="bg-stone-200 dark:bg-slate-700 px-1 rounded">tsup</code>), types: <code class="bg-stone-200 dark:bg-slate-700 px-1 rounded">npm run build:types</code>.</p>
+    </section>
+
+    <footer class="pt-10 border-t border-stone-200 dark:border-slate-800 text-sm text-slate-500 dark:text-slate-500">
+      <p><a href="https://github.com/litepacks/workmatic" class="text-cyan-800 dark:text-cyan-400 hover:underline">github.com/litepacks/workmatic</a> · MIT</p>
+    </footer>
+  </div>
+
+  <script>
+    hljs.highlightAll();
+    (function(){
+      var themeKey = 'workmatic-docs-theme';
+      var stored = localStorage.getItem(themeKey);
+      var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      if (stored === 'dark' || (!stored && prefersDark)) {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+      document.getElementById('theme-toggle').addEventListener('click', function(){
+        var isDark = document.documentElement.classList.toggle('dark');
+        localStorage.setItem(themeKey, isDark ? 'dark' : 'light');
+      });
+    })();
+  </script>
+</body>
+</html>
