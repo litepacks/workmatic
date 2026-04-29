@@ -6,6 +6,7 @@ import type {
   WorkmaticClient,
   AddJobOptions,
   AddJobResult,
+  AddManyResult,
   JobStats,
   JobStatus,
 } from './types.js';
@@ -88,6 +89,50 @@ export function createClient(options: ClientOptions): WorkmaticClient {
       return { ok: true, id: publicId };
     },
 
+    async addMany<TPayload = unknown>(
+      payloads: TPayload[],
+      opts: AddJobOptions = {}
+    ): Promise<AddManyResult> {
+      const {
+        priority = 0,
+        delayMs = 0,
+        maxAttempts = 3,
+      } = opts;
+
+      if (payloads.length === 0) {
+        return { ok: true, ids: [] };
+      }
+
+      const timestamp = now();
+      const runAt = timestamp + delayMs;
+
+      return await db.transaction().execute(async (trx) => {
+        const ids: string[] = [];
+        const rows = payloads.map((payload) => {
+          const payloadJson = validatePayload(payload);
+          const publicId = nanoid();
+          ids.push(publicId);
+          return {
+            public_id: publicId,
+            queue,
+            payload: payloadJson,
+            status: 'ready' as const,
+            priority,
+            run_at: runAt,
+            attempts: 0,
+            max_attempts: maxAttempts,
+            lease_until: 0,
+            created_at: timestamp,
+            updated_at: timestamp,
+            last_error: null,
+          };
+        });
+
+        await trx.insertInto('workmatic_jobs').values(rows).execute();
+        return { ok: true, ids };
+      });
+    },
+
     /**
      * Get job statistics for the queue
      */
@@ -106,7 +151,6 @@ export function createClient(options: ClientOptions): WorkmaticClient {
         ready: 0,
         running: 0,
         done: 0,
-        failed: 0,
         dead: 0,
         total: 0,
       };

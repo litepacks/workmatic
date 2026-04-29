@@ -1,7 +1,11 @@
 /**
  * Workmatic Performance Benchmarks
- * 
- * Run with: npx tsx benchmarks/run.ts
+ *
+ * Run with: npm run bench
+ *
+ * Flags:
+ *   --file   Use ./bench.db instead of :memory:
+ *   --micro  Short suite: Micro Sequential Insert (2k) + Stats Query only
  */
 
 import { createDatabase, createClient, createWorker } from '../src/index.js';
@@ -13,7 +17,9 @@ const CONFIG = {
   insertBatch: 10_000,
   processBatch: 5_000,
   concurrencyTest: 1_000,
-  
+  /** Smaller sequential insert for `--micro` (fast read/write sanity check) */
+  microInsertBatch: 2_000,
+
   // Concurrency levels to test
   concurrencyLevels: [1, 2, 4, 8, 16],
 };
@@ -212,6 +218,28 @@ async function benchmarkMixedWorkload(db: WorkmaticDb): Promise<void> {
 }
 
 // ============================================================
+// Micro: small sequential insert (fast feedback, same path as full insert bench)
+// ============================================================
+async function benchmarkMicroSequentialInsert(db: WorkmaticDb): Promise<void> {
+  console.log('⚡ Micro: Sequential Insert');
+  console.log(
+    `   ${formatNumber(CONFIG.microInsertBatch)} jobs (one-by-one, same code path as full benchmark)\n`
+  );
+
+  const client = createClient({ db, queue: `bench-micro-seq-${Date.now()}` });
+
+  await benchmark(
+    `Micro Sequential Insert (${formatNumber(CONFIG.microInsertBatch)})`,
+    CONFIG.microInsertBatch,
+    async () => {
+      for (let i = 0; i < CONFIG.microInsertBatch; i++) {
+        await client.add({ index: i, data: 'micro' });
+      }
+    }
+  );
+}
+
+// ============================================================
 // Benchmark: Stats query
 // ============================================================
 async function benchmarkStats(db: WorkmaticDb): Promise<void> {
@@ -288,6 +316,7 @@ async function benchmarkClaimBatch(db: WorkmaticDb): Promise<void> {
 async function main(): Promise<void> {
   // Check for --file flag
   const useFile = process.argv.includes('--file');
+  const microOnly = process.argv.includes('--micro');
   const dbPath = useFile ? './bench.db' : ':memory:';
   
   console.log('╔════════════════════════════════════════════════════════════╗');
@@ -295,11 +324,16 @@ async function main(): Promise<void> {
   console.log('╚════════════════════════════════════════════════════════════╝\n');
   
   console.log(`Configuration:`);
+  console.log(`  Mode:             ${microOnly ? 'micro (short suite)' : 'full'}`);
   console.log(`  Database:         ${useFile ? dbPath + ' (file)' : 'in-memory'}`);
-  console.log(`  Insert batch:     ${formatNumber(CONFIG.insertBatch)} jobs`);
-  console.log(`  Process batch:    ${formatNumber(CONFIG.processBatch)} jobs`);
-  console.log(`  Concurrency test: ${formatNumber(CONFIG.concurrencyTest)} jobs`);
-  console.log(`  Concurrency levels: ${CONFIG.concurrencyLevels.join(', ')}`);
+  if (!microOnly) {
+    console.log(`  Insert batch:     ${formatNumber(CONFIG.insertBatch)} jobs`);
+    console.log(`  Process batch:    ${formatNumber(CONFIG.processBatch)} jobs`);
+    console.log(`  Concurrency test: ${formatNumber(CONFIG.concurrencyTest)} jobs`);
+    console.log(`  Concurrency levels: ${CONFIG.concurrencyLevels.join(', ')}`);
+  } else {
+    console.log(`  Micro insert:     ${formatNumber(CONFIG.microInsertBatch)} jobs`);
+  }
   console.log();
   console.log('─'.repeat(60));
   console.log();
@@ -308,27 +342,40 @@ async function main(): Promise<void> {
   const db = createDatabase({ filename: dbPath });
   
   try {
-    await benchmarkSequentialInsert(db);
-    console.log('─'.repeat(60));
-    console.log();
-    
-    await benchmarkParallelInsert(db);
-    console.log('─'.repeat(60));
-    console.log();
-    
-    await benchmarkProcessing(db);
-    console.log('─'.repeat(60));
-    console.log();
-    
-    await benchmarkMixedWorkload(db);
-    console.log('─'.repeat(60));
-    console.log();
-    
-    await benchmarkStats(db);
-    console.log('─'.repeat(60));
-    console.log();
-    
-    await benchmarkClaimBatch(db);
+    if (microOnly) {
+      console.log('── Micro benchmarks (read-heavy + small insert path) ──\n');
+      await benchmarkMicroSequentialInsert(db);
+      console.log('─'.repeat(60));
+      console.log();
+      await benchmarkStats(db);
+    } else {
+      await benchmarkSequentialInsert(db);
+      console.log('─'.repeat(60));
+      console.log();
+
+      await benchmarkParallelInsert(db);
+      console.log('─'.repeat(60));
+      console.log();
+
+      await benchmarkProcessing(db);
+      console.log('─'.repeat(60));
+      console.log();
+
+      await benchmarkMixedWorkload(db);
+      console.log('─'.repeat(60));
+      console.log();
+
+      console.log('── Micro benchmarks (read-heavy + small insert path) ──\n');
+      await benchmarkMicroSequentialInsert(db);
+      console.log('─'.repeat(60));
+      console.log();
+
+      await benchmarkStats(db);
+      console.log('─'.repeat(60));
+      console.log();
+
+      await benchmarkClaimBatch(db);
+    }
     
     // Summary
     console.log('─'.repeat(60));

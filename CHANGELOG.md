@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.6] - 2026-04-29
+
+### Added
+
+- **`client.addMany()`** — batch insert in one transaction
+- **`getUnderlyingDb()`** — resolve `better-sqlite3` from `createDatabase()` instances (WeakMap + fallback)
+- **Worker options**: `pauseCheckIntervalMs`, `requeueExpiredIntervalMs`, `onPumpError`
+- **Claim path**: single `UPDATE … RETURNING` for SQLite 3.35+ (atomic batch claim)
+
+### Changed
+
+- **`Job` in `worker.process`**: `priority`, `createdAt`, and `lastError` now reflect the row (no more placeholders)
+- **Pump**: optional throttling for DB pause checks and lease requeue scans
+- **Legacy `failed` status**: removed from the public state machine; existing rows are migrated to `dead` on database open
+
+### Removed
+
+- **`failed` from `JobStatus` / stats / dashboard / CLI** — use `dead` for terminal failures and `last_error` for the message
+
 ## [1.0.5] - 2026-01-24
 
 ### Added

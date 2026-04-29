@@ -155,7 +155,6 @@ function createRequestHandler(
       ready: 0,
       running: 0,
       done: 0,
-      failed: 0,
       dead: 0,
       total: 0,
     };

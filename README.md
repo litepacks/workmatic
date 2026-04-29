@@ -72,6 +72,8 @@ Browsable copy with anchored sections: **[`docs/index.html`](docs/index.html)** 
 Initialize the database connection and schema.
 
 ```typescript
+import { createDatabase, getUnderlyingDb } from 'workmatic';
+
 const db = createDatabase({
   // Option 1: File path (creates or opens existing)
   filename: './jobs.db',
@@ -82,6 +84,9 @@ const db = createDatabase({
   // Option 3: Existing better-sqlite3 instance
   db: existingSqliteInstance,
 });
+
+// Underlying driver (only reliable for instances from createDatabase above)
+const sqlite = getUnderlyingDb(db);
 ```
 
 ### `createClient(options)`
@@ -116,7 +121,18 @@ Get job statistics for the queue.
 
 ```typescript
 const stats = await client.stats();
-// { ready: 5, running: 2, done: 100, failed: 0, dead: 1, total: 108 }
+// { ready: 5, running: 2, done: 100, dead: 1, total: 108 }
+```
+
+#### `client.addMany(payloads, options?)`
+
+Insert many jobs in a **single transaction**, sharing the same `priority`, `delayMs`, and `maxAttempts`.
+
+```typescript
+const { ok, ids } = await client.addMany(
+  [{ email: 'a@x.com' }, { email: 'b@x.com' }],
+  { priority: 1, delayMs: 0, maxAttempts: 3 }
+);
 ```
 
 #### `client.clear(options?)`
@@ -148,6 +164,9 @@ const worker = createWorker({
   backoff: (n) => 1000 * Math.pow(2, n),  // Optional: Retry backoff function
   persistState: false,    // Optional: Persist worker state to database (default: false)
   autoRestore: true,      // Optional: Auto-restore state on creation (default: true)
+  pauseCheckIntervalMs: 300,       // Optional: Min ms between DB pause checks (CLI pause). Default: 300
+  requeueExpiredIntervalMs: 0,   // Optional: Min ms between lease requeue scans; 0 = every pump
+  onPumpError: (err) => { /* optional hook after default log */ },
 });
 ```
 
@@ -334,7 +353,7 @@ interface Job<TPayload> {
   id: string;           // Unique public ID (nanoid)
   queue: string;        // Queue name
   payload: TPayload;    // Your job data
-  status: JobStatus;    // 'ready' | 'running' | 'done' | 'failed' | 'dead'
+  status: JobStatus;    // 'ready' | 'running' | 'done' | 'dead' while running
   priority: number;     // Priority value
   attempts: number;     // Current attempt count (starts at 0)
   maxAttempts: number;  // Maximum attempts allowed
@@ -415,6 +434,9 @@ worker.process(async (job) => {
 | `delayMs` | `0` | Delay before job becomes available |
 | `maxAttempts` | `3` | Maximum processing attempts |
 | `backoff` | `2^n * 1000` | Function returning retry delay in ms |
+| `pauseCheckIntervalMs` | `300` | Throttle CLI/live pause checks from the pump loop |
+| `requeueExpiredIntervalMs` | `0` | Throttle expired-lease requeue (0 = run every pump tick) |
+| `onPumpError` | `undefined` | Callback after the default pump error log |
 
 ## Dashboard
 
@@ -454,6 +476,25 @@ npm run bench
 npm run bench -- --file
 ```
 
+### Micro benchmarks
+
+Short suite: **2,000 sequential `add()` calls** (same code path as the full insert benchmark, smaller batch) plus **1,000 `client.stats()` calls** on a queue that already holds jobs. Useful for quick regression checks without running the full workload.
+
+```bash
+npm run bench:micro
+# or: npm run bench -- --micro
+
+npm run bench:micro -- --file
+# or: npm run bench -- --micro --file
+```
+
+| Benchmark | In-Memory | File-based |
+|-----------|-----------|------------|
+| Micro Sequential Insert (2,000) | ~27,000/s | ~9,300/s |
+| Stats Query (×1,000) | ~9,200/s | ~5,500/s |
+
+Figures are rounded from a representative run; throughput changes with hardware, SQLite settings, and how “warm” the database is.
+
 ### Results Comparison
 
 | Benchmark | In-Memory | File-based |
@@ -465,6 +506,8 @@ npm run bench -- --file
 | Process (concurrency=8) | 10,000/s | 8,300/s |
 | Process (concurrency=16) | 18,000/s | 5,700/s |
 | Mixed Insert+Process | 7,500/s | 3,500/s |
+| Micro Sequential Insert (2,000) | ~27,000/s | ~9,300/s |
+| Stats Query (×1,000) | ~9,200/s | ~5,500/s |
 | Claim + Process Batch | 23,600/s | 11,800/s |
 
 **Note**: File-based performance degrades at high concurrency due to disk I/O. For file-based databases, `concurrency=8` is often optimal. Performance varies by hardware.
@@ -489,15 +532,9 @@ npx workmatic list ./jobs.db --status=dead --limit=10
 
 # Export jobs to CSV
 npx workmatic export ./jobs.db backup.csv
-npx workmatic export ./jobs.db --status=failed > failed.csv
+npx workmatic export ./jobs.db --status=dead > dead-export.csv
 
-# Import jobs from CSV
-npx workmatic import ./jobs.db backup.csv
-
-# Delete jobs by status
-npx workmatic purge ./jobs.db --status=done
-
-# Retry dead/failed jobs (reset to ready)
+# Retry dead jobs (reset to ready)
 npx workmatic retry ./jobs.db --status=dead
 ```
 
@@ -519,7 +556,7 @@ npx workmatic retry ./jobs.db --status=dead
 
 | Option | Description |
 |--------|-------------|
-| `--status=<status>` | Filter by status (ready/running/done/failed/dead) |
+| `--status=<status>` | Filter by status (ready/running/done/dead) |
 | `--queue=<queue>` | Filter by queue name |
 | `--limit=<n>` | Limit results (default: 100) |
 

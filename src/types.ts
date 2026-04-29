@@ -3,7 +3,7 @@ import type { Kysely, Generated, ColumnType } from 'kysely';
 /**
  * Job status types
  */
-export type JobStatus = 'ready' | 'running' | 'done' | 'failed' | 'dead';
+export type JobStatus = 'ready' | 'running' | 'done' | 'dead';
 
 /**
  * Database table schema for workmatic_jobs
@@ -66,7 +66,7 @@ export interface Job<TPayload = unknown> {
   maxAttempts: number;
   /** When the job was created (unix ms) */
   createdAt: number;
-  /** Last error message if failed */
+  /** Last error from a previous attempt (e.g. before retry) */
   lastError: string | null;
 }
 
@@ -88,6 +88,14 @@ export interface AddJobOptions {
 export interface AddJobResult {
   ok: true;
   id: string;
+}
+
+/**
+ * Result of adding multiple jobs in one transaction
+ */
+export interface AddManyResult {
+  ok: true;
+  ids: string[];
 }
 
 /**
@@ -142,6 +150,18 @@ export interface WorkerOptions {
   persistState?: boolean;
   /** Auto-restore worker state on creation. Default: true (only applies if persistState is true) */
   autoRestore?: boolean;
+  /**
+   * Minimum interval between database pause checks (CLI `pause`). Reduces round-trips while pumping.
+   * Default: 300 ms
+   */
+  pauseCheckIntervalMs?: number;
+  /**
+   * Minimum interval between lease requeue scans. Default: every pump (0).
+   * Set to e.g. 1000 to run expired-lease recovery at most once per second.
+   */
+  requeueExpiredIntervalMs?: number;
+  /** Called when the pump loop catches an error (after optional default logging) */
+  onPumpError?: (error: unknown) => void;
 }
 
 /**
@@ -156,7 +176,6 @@ export interface JobStats {
   ready: number;
   running: number;
   done: number;
-  failed: number;
   dead: number;
   total: number;
 }
@@ -167,6 +186,14 @@ export interface JobStats {
 export interface WorkmaticClient {
   /** Add a job to the queue */
   add<TPayload = unknown>(payload: TPayload, options?: AddJobOptions): Promise<AddJobResult>;
+  /**
+   * Add many jobs in a single transaction (shared priority, delay, maxAttempts).
+   * Faster than repeated `add()` when inserting large batches.
+   */
+  addMany<TPayload = unknown>(
+    payloads: TPayload[],
+    options?: AddJobOptions
+  ): Promise<AddManyResult>;
   /** Get job statistics */
   stats(): Promise<JobStats>;
   /** Clear all jobs from the queue */
@@ -254,4 +281,7 @@ export interface ClaimedJob {
   payload: string;
   attempts: number;
   max_attempts: number;
+  priority: number;
+  created_at: number;
+  last_error: string | null;
 }

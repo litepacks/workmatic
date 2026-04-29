@@ -5,7 +5,7 @@
  */
 
 // Main exports
-export { createDatabase } from './database.js';
+export { createDatabase, getUnderlyingDb } from './database.js';
 export { createClient } from './client.js';
 export { createWorker } from './worker.js';
 export { createDashboard, createDashboardMiddleware } from './dashboard.js';
@@ -25,6 +25,7 @@ export type {
   // Options
   AddJobOptions,
   AddJobResult,
+  AddManyResult,
   DatabaseOptions,
   ClientOptions,
   WorkerOptions,

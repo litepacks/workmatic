@@ -1,6 +1,6 @@
 // Dashboard state
 const state = {
-  stats: { ready: 0, running: 0, done: 0, failed: 0, dead: 0, total: 0 },
+  stats: { ready: 0, running: 0, done: 0, dead: 0, total: 0 },
   jobs: [],
   queues: [],
   workers: [],
@@ -18,7 +18,6 @@ const elements = {
   statReady: document.getElementById('stat-ready'),
   statRunning: document.getElementById('stat-running'),
   statDone: document.getElementById('stat-done'),
-  statFailed: document.getElementById('stat-failed'),
   statDead: document.getElementById('stat-dead'),
   workersSection: document.getElementById('workers-section'),
   workersGrid: document.getElementById('workers-grid'),
@@ -95,7 +94,6 @@ function updateStatsUI() {
   elements.statReady.textContent = state.stats.ready.toLocaleString();
   elements.statRunning.textContent = state.stats.running.toLocaleString();
   elements.statDone.textContent = state.stats.done.toLocaleString();
-  elements.statFailed.textContent = state.stats.failed.toLocaleString();
   elements.statDead.textContent = state.stats.dead.toLocaleString();
 }
 

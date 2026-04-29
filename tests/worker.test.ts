@@ -60,6 +60,59 @@ describe('createWorker', () => {
       expect(job!.status).toBe('done');
     });
 
+    it('should expose priority, createdAt, lastError on job in processor', async () => {
+      const client = createClient({ db });
+      const worker = createWorker({ db, pollMs: 50 });
+      let seen: Job | null = null;
+      worker.process(async (job) => {
+        seen = job;
+      });
+      const r = await client.add({ x: 1 }, { priority: 7 });
+      const row = await db
+        .selectFrom('workmatic_jobs')
+        .selectAll()
+        .where('public_id', '=', r.id)
+        .executeTakeFirst();
+
+      await db
+        .updateTable('workmatic_jobs')
+        .set({ last_error: 'previous attempt' })
+        .where('public_id', '=', r.id)
+        .execute();
+
+      worker.start();
+      await new Promise((res) => setTimeout(res, 250));
+      await worker.stop();
+
+      expect(seen).not.toBeNull();
+      expect(seen!.priority).toBe(7);
+      expect(seen!.createdAt).toBe(row!.created_at);
+      expect(seen!.lastError).toBe('previous attempt');
+    });
+
+    it('should call onPumpError when pump fails', async () => {
+      let caught: unknown;
+      const worker = createWorker({
+        db,
+        pollMs: 30,
+        onPumpError: (e) => {
+          caught = e;
+        },
+      });
+      worker.process(async () => {});
+      const txSpy = vi.spyOn(db, 'transaction').mockReturnValue({
+        execute: async () => {
+          throw new Error('tx failed');
+        },
+      } as any);
+      worker.start();
+      await new Promise((r) => setTimeout(r, 120));
+      await worker.stop();
+      txSpy.mockRestore();
+      expect(caught).toBeInstanceOf(Error);
+      expect((caught as Error).message).toBe('tx failed');
+    });
+
     it('should process multiple jobs with concurrency', async () => {
       const client = createClient({ db });
       const worker = createWorker({ db, concurrency: 3, pollMs: 50 });

@@ -1,6 +1,6 @@
 {
   "name": "workmatic",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "A persistent job queue for Node.js using SQLite",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -28,6 +28,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "bench": "tsx benchmarks/run.ts",
+    "bench:micro": "tsx benchmarks/run.ts --micro",
     "prepublishOnly": "npm run build"
   },
   "keywords": [

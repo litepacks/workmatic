@@ -12,7 +12,7 @@ import type {
   ClaimedJob,
   WorkerState,
 } from './types.js';
-import { defaultBackoff, parsePayload, sleep, now } from './utils.js';
+import { defaultBackoff, parsePayload, now } from './utils.js';
 
 /**
  * Create a job queue worker for processing jobs
@@ -48,6 +48,9 @@ export function createWorker(options: WorkerOptions): WorkmaticWorker {
     backoff = defaultBackoff,
     persistState = false,
     autoRestore = true,
+    pauseCheckIntervalMs = 300,
+    requeueExpiredIntervalMs = 0,
+    onPumpError,
   } = options;
 
   if (!db) {
@@ -60,6 +63,14 @@ export function createWorker(options: WorkerOptions): WorkmaticWorker {
   let processor: JobProcessor<any> | null = null;
   let pumpTimeout: NodeJS.Timeout | null = null;
   let fastqQueue: queueAsPromised<ClaimedJob, void> | null = null;
+  let lastPauseCheckAt = 0;
+  let cachedDbPaused = false;
+  let lastRequeueAt = 0;
+
+  function notifyPumpError(error: unknown): void {
+    console.error('[workmatic] Pump error:', error);
+    onPumpError?.(error);
+  }
 
   /**
    * Get the settings key for this worker's state
@@ -76,16 +87,6 @@ export function createWorker(options: WorkerOptions): WorkmaticWorker {
 
     const timestamp = now();
     const key = getStateKey();
-
-    // Ensure settings table exists
-    await db.schema
-      .createTable('workmatic_settings')
-      .ifNotExists()
-      .addColumn('queue', 'text', (col) => col.primaryKey())
-      .addColumn('paused', 'integer', (col) => col.notNull().defaultTo(0))
-      .addColumn('updated_at', 'integer', (col) => col.notNull())
-      .execute()
-      .catch(() => {}); // Ignore if exists
 
     // Use raw SQL for upsert since different SQLite versions have different syntax
     await sql`
@@ -144,45 +145,52 @@ export function createWorker(options: WorkerOptions): WorkmaticWorker {
   }
 
   /**
-   * Claim a batch of jobs for processing
+   * Claim a batch of jobs for processing (single UPDATE … RETURNING per SQLite 3.35+)
    */
   async function claimBatch(limit: number): Promise<ClaimedJob[]> {
     const timestamp = now();
     const leaseUntil = timestamp + leaseMs;
 
-    // Use a transaction to ensure atomic claim
     return await db.transaction().execute(async (trx) => {
-      // Select eligible jobs
-      const jobs = await trx
-        .selectFrom('workmatic_jobs')
-        .select(['id', 'public_id', 'queue', 'payload', 'attempts', 'max_attempts'])
-        .where('queue', '=', queue)
-        .where('status', '=', 'ready')
-        .where('run_at', '<=', timestamp)
-        .orderBy('priority', 'asc')
-        .orderBy('id', 'asc')
-        .limit(limit)
-        .execute();
+      const result = await sql<{
+        id: number;
+        public_id: string;
+        queue: string;
+        payload: string;
+        attempts: number;
+        max_attempts: number;
+        priority: number;
+        created_at: number;
+        last_error: string | null;
+      }>`
+        UPDATE workmatic_jobs
+        SET status = 'running', lease_until = ${leaseUntil}, updated_at = ${timestamp}
+        WHERE rowid IN (
+          SELECT rowid FROM workmatic_jobs
+          WHERE queue = ${queue}
+            AND status = 'ready'
+            AND run_at <= ${timestamp}
+          ORDER BY priority ASC, id ASC
+          LIMIT ${limit}
+        )
+        RETURNING id, public_id, queue, payload, attempts, max_attempts, priority, created_at, last_error
+      `.execute(trx);
 
-      if (jobs.length === 0) {
+      const rows = (result as { rows: ClaimedJob[] }).rows;
+      if (!rows || !Array.isArray(rows)) {
         return [];
       }
-
-      // Get the IDs of claimed jobs
-      const jobIds = jobs.map(j => j.id);
-
-      // Update them to running status
-      await trx
-        .updateTable('workmatic_jobs')
-        .set({
-          status: 'running',
-          lease_until: leaseUntil,
-          updated_at: timestamp,
-        })
-        .where('id', 'in', jobIds)
-        .execute();
-
-      return jobs;
+      return rows.map((row) => ({
+        id: row.id,
+        public_id: row.public_id,
+        queue: row.queue,
+        payload: row.payload,
+        attempts: row.attempts,
+        max_attempts: row.max_attempts,
+        priority: row.priority,
+        created_at: row.created_at,
+        last_error: row.last_error,
+      }));
     });
   }
 
@@ -284,11 +292,11 @@ export function createWorker(options: WorkerOptions): WorkmaticWorker {
       queue: claimedJob.queue,
       payload,
       status: 'running',
-      priority: 0, // Not needed for processing
+      priority: claimedJob.priority,
       attempts: claimedJob.attempts,
       maxAttempts: claimedJob.max_attempts,
-      createdAt: 0, // Not needed for processing
-      lastError: null,
+      createdAt: claimedJob.created_at,
+      lastError: claimedJob.last_error,
     };
 
     try {
@@ -337,15 +345,25 @@ export function createWorker(options: WorkerOptions): WorkmaticWorker {
     }
 
     try {
-      // Check database pause state (allows CLI to pause running workers)
-      const dbPaused = await isQueuePausedInDb();
-      if (dbPaused) {
+      const t = now();
+      if (t - lastPauseCheckAt >= pauseCheckIntervalMs) {
+        lastPauseCheckAt = t;
+        cachedDbPaused = await isQueuePausedInDb();
+      }
+      if (cachedDbPaused) {
         pumpTimeout = setTimeout(pump, pollMs);
         return;
       }
 
-      // Requeue expired leases
-      await requeueExpiredLeases();
+      if (
+        requeueExpiredIntervalMs <= 0 ||
+        t - lastRequeueAt >= requeueExpiredIntervalMs
+      ) {
+        if (requeueExpiredIntervalMs > 0) {
+          lastRequeueAt = t;
+        }
+        await requeueExpiredLeases();
+      }
 
       // Claim a batch of jobs
       const batchSize = concurrency * 2;
@@ -363,8 +381,7 @@ export function createWorker(options: WorkerOptions): WorkmaticWorker {
         pumpTimeout = setTimeout(pump, pollMs);
       }
     } catch (error) {
-      // Log error and continue
-      console.error('[workmatic] Pump error:', error);
+      notifyPumpError(error);
       pumpTimeout = setTimeout(pump, pollMs);
     }
   }
@@ -445,7 +462,6 @@ export function createWorker(options: WorkerOptions): WorkmaticWorker {
         ready: 0,
         running: 0,
         done: 0,
-        failed: 0,
         dead: 0,
         total: 0,
       };

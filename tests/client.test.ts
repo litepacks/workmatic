@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { createDatabase, createClient } from '../src/index.js';
+import { createDatabase, createClient, getUnderlyingDb } from '../src/index.js';
 import type { WorkmaticDb } from '../src/types.js';
 
 describe('createClient', () => {
@@ -118,6 +118,43 @@ describe('createClient', () => {
     });
   });
 
+  describe('addMany', () => {
+    it('should insert multiple jobs in one transaction', async () => {
+      const client = createClient({ db });
+      const result = await client.addMany(
+        [{ a: 1 }, { a: 2 }, { a: 3 }],
+        { priority: 2, maxAttempts: 5 }
+      );
+      expect(result.ok).toBe(true);
+      expect(result.ids).toHaveLength(3);
+
+      const rows = await db
+        .selectFrom('workmatic_jobs')
+        .selectAll()
+        .where('public_id', 'in', result.ids)
+        .execute();
+
+      expect(rows).toHaveLength(3);
+      for (const row of rows) {
+        expect(row.priority).toBe(2);
+        expect(row.max_attempts).toBe(5);
+      }
+    });
+
+    it('should return empty ids for empty payloads', async () => {
+      const client = createClient({ db });
+      const result = await client.addMany([]);
+      expect(result.ids).toEqual([]);
+    });
+  });
+
+  describe('getUnderlyingDb', () => {
+    it('should return better-sqlite3 for createDatabase instances', () => {
+      const sqlite = getUnderlyingDb(db);
+      expect(typeof sqlite.prepare).toBe('function');
+    });
+  });
+
   describe('stats', () => {
     it('should return zero counts for empty queue', async () => {
       const client = createClient({ db });
@@ -128,7 +165,6 @@ describe('createClient', () => {
         ready: 0,
         running: 0,
         done: 0,
-        failed: 0,
         dead: 0,
         total: 0,
       });

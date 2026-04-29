@@ -162,7 +162,9 @@ worker.start();</code></pre>
     <section id="api-database" class="doc-section mb-14">
       <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">API Reference — <code class="text-xl">createDatabase(options)</code></h2>
       <p class="text-slate-600 dark:text-slate-400 mb-4">Initialize the database connection and schema.</p>
-      <pre class="bg-slate-900 p-5 rounded-xl text-sm overflow-x-auto"><code class="language-typescript">const db = createDatabase({
+      <pre class="bg-slate-900 p-5 rounded-xl text-sm overflow-x-auto"><code class="language-typescript">import { createDatabase, getUnderlyingDb } from 'workmatic';
+
+const db = createDatabase({
   // Option 1: File path (creates or opens existing)
   filename: './jobs.db',
   
@@ -171,7 +173,9 @@ worker.start();</code></pre>
   
   // Option 3: Existing better-sqlite3 instance
   db: existingSqliteInstance,
-});</code></pre>
+});
+
+const sqlite = getUnderlyingDb(db);</code></pre>
     </section>
 
     <section id="api-client" class="doc-section mb-14">
@@ -196,7 +200,14 @@ worker.start();</code></pre>
       <h3 class="text-lg font-semibold text-slate-800 dark:text-slate-200 mb-3"><code>client.stats()</code></h3>
       <p class="text-slate-600 dark:text-slate-400 mb-3">Get job statistics for the queue.</p>
       <pre class="bg-slate-900 p-5 rounded-xl text-sm overflow-x-auto mb-8"><code class="language-typescript">const stats = await client.stats();
-// { ready: 5, running: 2, done: 100, failed: 0, dead: 1, total: 108 }</code></pre>
+// { ready: 5, running: 2, done: 100, dead: 1, total: 108 }</code></pre>
+
+      <h3 class="text-lg font-semibold text-slate-800 dark:text-slate-200 mb-3"><code>client.addMany(payloads, options?)</code></h3>
+      <p class="text-slate-600 dark:text-slate-400 mb-3">Many jobs in one transaction; same priority, delay, and maxAttempts for all.</p>
+      <pre class="bg-slate-900 p-5 rounded-xl text-sm overflow-x-auto mb-8"><code class="language-typescript">const { ok, ids } = await client.addMany(
+  [{ email: 'a@test.com' }, { email: 'b@test.com' }],
+  { priority: 1, maxAttempts: 5 }
+);</code></pre>
 
       <h3 class="text-lg font-semibold text-slate-800 dark:text-slate-200 mb-3"><code>client.clear(options?)</code></h3>
       <p class="text-slate-600 dark:text-slate-400 mb-3">Clear all jobs from the queue.</p>
@@ -222,6 +233,9 @@ console.log(`Deleted ${deleted} done jobs`);</code></pre>
   backoff: (n) => 1000 * Math.pow(2, n),  // Optional: Retry backoff function
   persistState: false,    // Optional: Persist worker state to database (default: false)
   autoRestore: true,      // Optional: Auto-restore state on creation (default: true)
+  pauseCheckIntervalMs: 300,       // Optional: throttle DB pause checks from pump
+  requeueExpiredIntervalMs: 0,    // Optional: throttle lease requeue (0 = every pump)
+  onPumpError: (err) => { /* after default log */ },
 });</code></pre>
 
       <h3 class="text-lg font-semibold text-slate-800 dark:text-slate-200 mb-3"><code>worker.process(fn)</code></h3>
@@ -360,7 +374,7 @@ app.use('/workmatic/*', (c) => {
   id: string;           // Unique public ID (nanoid)
   queue: string;        // Queue name
   payload: TPayload;    // Your job data
-  status: JobStatus;    // 'ready' | 'running' | 'done' | 'failed' | 'dead'
+  status: JobStatus;    // 'ready' | 'running' | 'done' | 'dead'
   priority: number;     // Priority value
   attempts: number;     // Current attempt count (starts at 0)
   maxAttempts: number;  // Maximum attempts allowed
@@ -436,6 +450,9 @@ app.use('/workmatic/*', (c) => {
             <tr><td><code>delayMs</code></td><td><code>0</code></td><td>Delay before job becomes available</td></tr>
             <tr><td><code>maxAttempts</code></td><td><code>3</code></td><td>Max processing attempts</td></tr>
             <tr><td><code>backoff</code></td><td><code>2^n * 1000</code></td><td>Retry delay function (returns ms)</td></tr>
+            <tr><td><code>pauseCheckIntervalMs</code></td><td><code>300</code></td><td>Min ms between DB pause checks in pump</td></tr>
+            <tr><td><code>requeueExpiredIntervalMs</code></td><td><code>0</code></td><td>Min ms between lease requeue scans (0 = each pump)</td></tr>
+            <tr><td><code>onPumpError</code></td><td>—</td><td>Optional callback after default pump error log</td></tr>
           </tbody>
         </table>
       </div>
@@ -470,6 +487,20 @@ npm run bench
 
 # File-based (realistic, persistent)
 npm run bench -- --file</code></pre>
+      <h3 class="text-lg font-semibold text-slate-800 dark:text-slate-200 mb-3">Micro benchmarks</h3>
+      <p class="text-slate-600 dark:text-slate-400 mb-3 text-sm leading-relaxed">Short suite: <strong class="text-slate-800 dark:text-slate-200">2,000</strong> sequential <code class="bg-stone-200 dark:bg-slate-700 px-1 rounded">add()</code> calls plus <strong class="text-slate-800 dark:text-slate-200">1,000</strong> <code class="bg-stone-200 dark:bg-slate-700 px-1 rounded">client.stats()</code> calls (queue already has jobs). Same paths as the full runner, less time.</p>
+      <pre class="bg-slate-900 p-5 rounded-xl text-sm overflow-x-auto mb-6"><code class="language-bash">npm run bench:micro
+npm run bench:micro -- --file</code></pre>
+      <div class="overflow-x-auto mb-8">
+        <table class="w-full text-sm">
+          <thead><tr><th>Benchmark</th><th>In-Memory</th><th>File-based</th></tr></thead>
+          <tbody class="text-slate-600 dark:text-slate-400">
+            <tr><td>Micro Sequential Insert (2,000)</td><td>~27,000/s</td><td>~9,300/s</td></tr>
+            <tr><td>Stats Query (×1,000)</td><td>~9,200/s</td><td>~5,500/s</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="text-slate-500 dark:text-slate-500 text-sm mb-8">Rounded indicative numbers; real throughput depends on disk, CPU, and DB “warmth” after heavier benchmarks.</p>
       <h3 class="text-lg font-semibold text-slate-800 dark:text-slate-200 mb-3">Results comparison</h3>
       <div class="overflow-x-auto">
         <table class="w-full text-sm">
@@ -482,6 +513,8 @@ npm run bench -- --file</code></pre>
             <tr><td>Process (concurrency=8)</td><td>10,000/s</td><td>8,300/s</td></tr>
             <tr><td>Process (concurrency=16)</td><td>18,000/s</td><td>5,700/s</td></tr>
             <tr><td>Mixed Insert+Process</td><td>7,500/s</td><td>3,500/s</td></tr>
+            <tr><td>Micro Sequential Insert (2,000)</td><td>~27,000/s</td><td>~9,300/s</td></tr>
+            <tr><td>Stats Query (×1,000)</td><td>~9,200/s</td><td>~5,500/s</td></tr>
             <tr><td>Claim + Process Batch</td><td>23,600/s</td><td>11,800/s</td></tr>
           </tbody>
         </table>
@@ -507,7 +540,7 @@ npx workmatic list ./jobs.db --status=dead --limit=10
 
 # Export jobs to CSV
 npx workmatic export ./jobs.db backup.csv
-npx workmatic export ./jobs.db --status=failed &gt; failed.csv
+npx workmatic export ./jobs.db --status=dead &gt; dead.csv
 
 # Import jobs from CSV
 npx workmatic import ./jobs.db backup.csv
@@ -515,7 +548,7 @@ npx workmatic import ./jobs.db backup.csv
 # Delete jobs by status
 npx workmatic purge ./jobs.db --status=done
 
-# Retry dead/failed jobs (reset to ready)
+# Retry dead jobs (reset to ready)
 npx workmatic retry ./jobs.db --status=dead</code></pre>
 
       <h3 class="text-lg font-semibold text-slate-800 dark:text-slate-200 mb-3">CLI commands</h3>
@@ -541,7 +574,7 @@ npx workmatic retry ./jobs.db --status=dead</code></pre>
         <table class="w-full text-sm">
           <thead><tr><th>Option</th><th>Description</th></tr></thead>
           <tbody class="text-slate-600 dark:text-slate-400">
-            <tr><td><code>--status=&lt;status&gt;</code></td><td><code>ready</code> / <code>running</code> / <code>done</code> / <code>failed</code> / <code>dead</code></td></tr>
+            <tr><td><code>--status=&lt;status&gt;</code></td><td><code>ready</code> / <code>running</code> / <code>done</code> / <code>dead</code></td></tr>
             <tr><td><code>--queue=&lt;queue&gt;</code></td><td>Filter by queue name</td></tr>
             <tr><td><code>--limit=&lt;n&gt;</code></td><td>Limit results (default 100)</td></tr>
           </tbody>

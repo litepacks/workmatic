@@ -8,7 +8,7 @@
  *   export <db> [output]          Export jobs to CSV
  *   import <db> <input>           Import jobs from CSV
  *   purge <db> [--status=done]    Delete jobs by status
- *   retry <db> [--status=dead]    Retry failed/dead jobs
+ *   retry <db> [--status=dead]    Retry dead jobs (reset to ready)
  *   pause <db> <queue>            Pause a queue (workers stop claiming)
  *   resume <db> <queue>           Resume a paused queue
  */
@@ -36,12 +36,12 @@ Commands:
   export <db> [output.csv]       Export jobs to CSV (default: stdout)
   import <db> <input.csv>        Import jobs from CSV
   purge <db> --status=<status>   Delete jobs by status
-  retry <db> [--status=dead]     Retry dead/failed jobs (reset to ready)
+  retry <db> [--status=dead]     Retry dead jobs (reset to ready)
   pause <db> <queue>             Pause a queue (running workers stop claiming)
   resume <db> <queue>            Resume a paused queue
 
 Options:
-  --status=<status>   Filter by status (ready|running|done|failed|dead)
+  --status=<status>   Filter by status (ready|running|done|dead)
   --queue=<queue>     Filter by queue name
   --limit=<n>         Limit number of results (default: 100)
 
@@ -49,7 +49,7 @@ Examples:
   workmatic stats ./jobs.db
   workmatic list ./jobs.db --status=dead --limit=10
   workmatic export ./jobs.db backup.csv
-  workmatic export ./jobs.db --status=failed > failed-jobs.csv
+  workmatic export ./jobs.db --status=dead > dead-jobs.csv
   workmatic import ./jobs.db backup.csv
   workmatic purge ./jobs.db --status=done
   workmatic retry ./jobs.db --status=dead
@@ -139,12 +139,11 @@ async function cmdStats(dbPath: string): Promise<void> {
     
     console.log('\n📊 Job Statistics\n');
     
-    const statusOrder = ['ready', 'running', 'done', 'failed', 'dead'];
+    const statusOrder = ['ready', 'running', 'done', 'dead'];
     const statusEmoji: Record<string, string> = {
       ready: '⏳',
       running: '▶️',
       done: '✅',
-      failed: '⚠️',
       dead: '💀',
     };
     
@@ -216,7 +215,6 @@ async function cmdList(dbPath: string, options: Record<string, string>): Promise
       ready: '⏳',
       running: '▶️',
       done: '✅',
-      failed: '⚠️',
       dead: '💀',
     };
     

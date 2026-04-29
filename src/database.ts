@@ -2,6 +2,9 @@ import Database from 'better-sqlite3';
 import { Kysely, SqliteDialect } from 'kysely';
 import type { WorkmaticDatabase, WorkmaticDb, DatabaseOptions } from './types.js';
 
+/** Maps Kysely instances created via {@link createDatabase} to the underlying driver DB. */
+const kyselyToSqlite = new WeakMap<WorkmaticDb, Database.Database>();
+
 /**
  * Create and initialize the workmatic database
  * 
@@ -46,6 +49,8 @@ export function createDatabase(options: DatabaseOptions = {}): WorkmaticDb {
 
   // Create schema synchronously using better-sqlite3 directly
   createSchema(sqliteDb);
+
+  kyselyToSqlite.set(db, sqliteDb);
 
   return db;
 }
@@ -95,15 +100,34 @@ function createSchema(db: Database.Database): void {
       updated_at INTEGER NOT NULL
     )
   `);
+
+  // Legacy status no longer used in the state machine (retries use `ready`, terminal errors use `dead`)
+  db.exec(`
+    UPDATE workmatic_jobs SET status = 'dead' WHERE status = 'failed'
+  `);
 }
 
 /**
  * Get the underlying better-sqlite3 database instance from a Kysely instance
- * This is useful for advanced operations or testing
+ * created with {@link createDatabase}. For manually constructed `Kysely` instances,
+ * falls back to reading the dialect adapter (may break across Kysely versions).
  */
 export function getUnderlyingDb(db: WorkmaticDb): Database.Database {
-  // Access the internal database through the dialect
-  // This is a bit hacky but necessary for some operations
-  const dialect = (db as any).getExecutor().adapter.db;
-  return dialect;
+  const mapped = kyselyToSqlite.get(db);
+  if (mapped) {
+    return mapped;
+  }
+  try {
+    const ex = (db as unknown as { getExecutor?: () => { adapter: { db: Database.Database } } })
+      .getExecutor?.();
+    const dialect = ex?.adapter?.db;
+    if (dialect) {
+      return dialect;
+    }
+  } catch {
+    /* ignore */
+  }
+  throw new Error(
+    'getUnderlyingDb: could not resolve better-sqlite3 instance (use createDatabase() or pass db from it)'
+  );
 }
