@@ -8,6 +8,7 @@
 export { createDatabase, getUnderlyingDb } from './database.js';
 export { createClient } from './client.js';
 export { createWorker, DEFAULT_WORKER_TIMEOUT_MS } from './worker.js';
+export { createOrchestrator } from './orchestrator.js';
 export { createDashboard, createDashboardMiddleware } from './dashboard.js';
 
 // Utility exports
@@ -29,6 +30,11 @@ export type {
   DatabaseOptions,
   ClientOptions,
   WorkerOptions,
+  OrchestratorOptions,
+  RegisterQueueOptions,
+  TransferOptions,
+  TransferResult,
+  MoveJobOptions,
   DashboardOptions,
   DashboardMiddlewareOptions,
   BackoffFunction,
@@ -37,6 +43,7 @@ export type {
   // Interfaces
   WorkmaticClient,
   WorkmaticWorker,
+  WorkmaticOrchestrator,
   WorkmaticDashboard,
   DashboardMiddleware,
   WorkmaticDb,

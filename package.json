@@ -26,6 +26,7 @@
     "build": "tsup",
     "build:types": "tsc --emitDeclarationOnly",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "bench": "tsx benchmarks/run.ts",
     "bench:micro": "tsx benchmarks/run.ts --micro",
@@ -59,6 +60,7 @@
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^22.10.7",
+    "@vitest/coverage-v8": "^2.1.8",
     "tsup": "^8.5.1",
     "tsx": "^4.21.0",
     "typescript": "^5.7.3",

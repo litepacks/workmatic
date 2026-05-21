@@ -272,6 +272,84 @@ export interface WorkmaticDashboard {
 }
 
 /**
+ * Options for creating an orchestrator
+ */
+export interface OrchestratorOptions {
+  /** Kysely database instance */
+  db: WorkmaticDb;
+}
+
+/**
+ * Options when registering a queue with the orchestrator
+ */
+export interface RegisterQueueOptions {
+  /** Create a worker for this queue (omit for client-only) */
+  worker?: Omit<WorkerOptions, 'db' | 'queue'>;
+}
+
+/**
+ * Options for bulk transfer between queues
+ */
+export interface TransferOptions {
+  /** Source queue name */
+  from: string;
+  /** Target queue name */
+  to: string;
+  /**
+   * Job statuses to transfer. Default: `['ready', 'dead']`.
+   * `running` and `done` are excluded by default for safety.
+   */
+  status?: JobStatus | JobStatus[];
+  /** Max jobs to move (default: 10000) */
+  limit?: number;
+  /** When moving `dead` jobs, reset to `ready` with attempts cleared (retry queue) */
+  resetForRetry?: boolean;
+}
+
+/**
+ * Result of a bulk transfer
+ */
+export interface TransferResult {
+  moved: number;
+}
+
+/**
+ * Options for moving a single job by public id
+ */
+export interface MoveJobOptions {
+  /** Allowed source statuses (default: ready, dead) */
+  status?: JobStatus | JobStatus[];
+  /** Reset dead job for retry in target queue */
+  resetForRetry?: boolean;
+}
+
+/**
+ * Multi-queue orchestrator interface
+ */
+export interface WorkmaticOrchestrator {
+  /** Register a queue (client + optional worker) */
+  register(queue: string, options?: RegisterQueueOptions): WorkmaticClient;
+  /** Get client for a queue (lazy-creates if not registered) */
+  client(queue: string): WorkmaticClient;
+  /** Get worker for a queue (must be registered with worker option) */
+  worker(queue: string): WorkmaticWorker;
+  /** All registered workers (for dashboard) */
+  workers(): WorkmaticWorker[];
+  /** Queue names from DB and registry */
+  queues(): Promise<string[]>;
+  /** Set processor on a registered worker */
+  process<TPayload = unknown>(queue: string, fn: JobProcessor<TPayload>): void;
+  startAll(): void;
+  stopAll(): Promise<void>;
+  pause(queue: string): Promise<void>;
+  resume(queue: string): Promise<void>;
+  isPaused(queue: string): Promise<boolean>;
+  stats(queue?: string): Promise<Record<string, JobStats>>;
+  transfer(options: TransferOptions): Promise<TransferResult>;
+  moveJob(publicId: string, toQueue: string, options?: MoveJobOptions): Promise<void>;
+}
+
+/**
  * Internal job representation from database
  */
 export interface ClaimedJob {

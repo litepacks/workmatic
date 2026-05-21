@@ -63,6 +63,46 @@ worker.process(async (job) => {
 worker.start();
 ```
 
+## Multi-queue orchestration
+
+Use `createOrchestrator` to register several queues, control all workers together, and move jobs between queues:
+
+```typescript
+import { createDatabase, createOrchestrator } from 'workmatic';
+
+const db = createDatabase({ filename: './jobs.db' });
+const orch = createOrchestrator({ db });
+
+orch.register('emails', { worker: { concurrency: 4 } });
+orch.register('reports', { worker: { concurrency: 1 } });
+
+orch.process('emails', async (job) => { /* send email */ });
+orch.process('reports', async (job) => { /* generate PDF */ });
+
+await orch.client('emails').add({ to: 'user@example.com' });
+
+orch.startAll();
+
+// Move ready/dead jobs to another queue (e.g. retry pipeline)
+await orch.transfer({ from: 'emails', to: 'emails-retry', status: 'dead', resetForRetry: true });
+
+await orch.pause('reports');
+await orch.resume('reports');
+
+await orch.stopAll();
+```
+
+CLI transfer: `workmatic transfer ./jobs.db emails emails-retry --status=dead --retry`
+
+See [`examples/orchestrator.ts`](examples/orchestrator.ts) (transfer between queues) and [`examples/orchestrator-processors.ts`](examples/orchestrator-processors.ts) (different `process()` per queue).
+
+## Testing
+
+```bash
+npm test
+npm run test:coverage   # requires ≥90% line/branch/function coverage
+```
+
 ## API Reference
 
 Browsable copy with anchored sections: **[`docs/index.html`](docs/index.html)** (API from [`#api-database`](docs/index.html#api-database)).
@@ -199,6 +239,26 @@ Stop processing and wait for current jobs to finish.
 
 ```typescript
 await worker.stop();
+```
+
+### `createOrchestrator(options)`
+
+Manage multiple queues with shared lifecycle and transfer helpers.
+
+```typescript
+const orch = createOrchestrator({ db });
+
+orch.register('emails', { worker: { concurrency: 4 } });
+const client = orch.client('emails'); // or use return value of register()
+
+orch.process('emails', async (job) => { /* ... */ });
+orch.startAll();
+await orch.stopAll();
+
+await orch.transfer({ from: 'emails', to: 'retry', status: 'dead', resetForRetry: true });
+await orch.moveJob(jobId, 'archive');
+await orch.pause('emails');
+await orch.resume('emails');
 ```
 
 #### `worker.pause()` / `worker.resume()`

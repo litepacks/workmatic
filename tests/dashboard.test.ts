@@ -1,5 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { createDatabase, createClient, createWorker, createDashboard } from '../src/index.js';
+import { createServer } from 'http';
+import {
+  createDatabase,
+  createClient,
+  createWorker,
+  createDashboard,
+  createDashboardMiddleware,
+} from '../src/index.js';
 import type { WorkmaticDb, WorkmaticDashboard } from '../src/types.js';
 
 describe('createDashboard', () => {
@@ -140,6 +147,30 @@ describe('createDashboard', () => {
       expect(response.status).toBe(404);
       expect(data.error).toBe('Job not found');
     });
+
+    it('OPTIONS should return 204', async () => {
+      const response = await fetch(`${baseUrl}/api/stats`, { method: 'OPTIONS' });
+      expect(response.status).toBe(204);
+    });
+
+    it('unknown API path should return 404', async () => {
+      const response = await fetch(`${baseUrl}/api/unknown`);
+      const data = await response.json();
+      expect(response.status).toBe(404);
+      expect(data.error).toBe('Not found');
+    });
+
+    it('GET /api/stats should filter by queue', async () => {
+      const clientA = createClient({ db, queue: 'qa' });
+      const clientB = createClient({ db, queue: 'qb' });
+      await clientA.add({ n: 1 });
+      await clientB.add({ n: 2 });
+
+      const response = await fetch(`${baseUrl}/api/stats?queue=qa`);
+      const data = await response.json();
+      expect(response.status).toBe(200);
+      expect(data.stats.ready).toBe(1);
+    });
   });
 
   describe('worker control', () => {
@@ -185,6 +216,26 @@ describe('createDashboard', () => {
       
       expect(response.status).toBe(404);
       expect(data.error).toContain('not found');
+    });
+  });
+
+  describe('createDashboardMiddleware', () => {
+    it('should serve API under basePath', async () => {
+      const middleware = createDashboardMiddleware({ db, basePath: '/jobs' });
+      const server = createServer((req, res) => middleware(req, res));
+      await new Promise<void>((resolve) => server.listen(3460, resolve));
+
+      const client = createClient({ db });
+      await client.add({ n: 1 });
+
+      const response = await fetch('http://localhost:3460/jobs/api/stats');
+      const data = await response.json();
+      expect(response.status).toBe(200);
+      expect(data.stats.total).toBeGreaterThan(0);
+
+      await new Promise<void>((resolve, reject) =>
+        server.close((err) => (err ? reject(err) : resolve()))
+      );
     });
   });
 });

@@ -32,6 +32,18 @@ describe('validatePayload', () => {
     expect(() => validatePayload(BigInt(123))).toThrow('Payload is not JSON-serializable');
   });
 
+  it('should report unknown error when stringify throws non-Error', () => {
+    const orig = JSON.stringify;
+    JSON.stringify = () => {
+      throw 'bad';
+    };
+    try {
+      expect(() => validatePayload({})).toThrow('Unknown error');
+    } finally {
+      JSON.stringify = orig;
+    }
+  });
+
   it('should handle nested objects', () => {
     const payload = {
       user: {
