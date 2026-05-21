@@ -288,6 +288,65 @@ describe('CLI commands', () => {
     );
   });
 
+  it('cmdList shows unknown status emoji fallback', async () => {
+    const sqlite = new Database(dbPath);
+    sqlite
+      .prepare(
+        `INSERT INTO workmatic_jobs (public_id, queue, payload, status, priority, run_at, attempts, max_attempts, lease_until, created_at, updated_at, last_error) VALUES ('x','q','{}','weird',0,1,0,3,0,1,1,NULL)`
+      )
+      .run();
+    sqlite.close();
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    await cmdList(dbPath, {});
+    log.mockRestore();
+  });
+
+  it('cmdStats shows unknown status emoji fallback', async () => {
+    const sqlite = new Database(dbPath);
+    sqlite
+      .prepare(
+        `INSERT INTO workmatic_jobs (public_id, queue, payload, status, priority, run_at, attempts, max_attempts, lease_until, created_at, updated_at, last_error) VALUES ('x','q','{}','weird',0,1,0,3,0,1,1,NULL)`
+      )
+      .run();
+    sqlite.close();
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    await cmdStats(dbPath);
+    log.mockRestore();
+  });
+
+  it('cmdTransfer with explicit status list', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    await cmdTransfer(dbPath, 'emails', 'done-q', { status: 'ready,done' });
+    log.mockRestore();
+  });
+
+  it('cmdList includes empty emoji for unknown status', async () => {
+    const sqlite = new Database(dbPath);
+    sqlite
+      .prepare(
+        `INSERT INTO workmatic_jobs (public_id, queue, payload, status, priority, run_at, attempts, max_attempts, lease_until, created_at, updated_at, last_error) VALUES ('z1','q','{}','mystery',0,1,0,3,0,1,1,NULL)`
+      )
+      .run();
+    sqlite.close();
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    await cmdList(dbPath, {});
+    const out = log.mock.calls.flat().join(' ');
+    expect(out).toContain('mystery');
+    log.mockRestore();
+  });
+
+  it('cmdTransfer without limit uses default', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    await cmdTransfer(dbPath, 'emails', 'other', { status: 'ready' });
+    log.mockRestore();
+  });
+
+  it('cmdTransfer with limit option', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    await cmdTransfer(dbPath, 'emails', 'limited', { status: 'ready', limit: '1' });
+    log.mockRestore();
+  });
+
   it('cmdTransfer with retry flag', async () => {
     const sqlite = new Database(dbPath);
     sqlite.prepare("UPDATE workmatic_jobs SET status = 'dead'").run();

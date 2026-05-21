@@ -20,6 +20,12 @@ import { now } from './utils.js';
 const DEFAULT_TRANSFER_STATUSES: JobStatus[] = ['ready', 'dead'];
 const DEFAULT_TRANSFER_LIMIT = 10_000;
 
+/** @internal Exported for tests */
+export function rowsUpdated(result: unknown): number {
+  const row = (result as { numUpdatedRows?: number | bigint }[])[0];
+  return Number(row?.numUpdatedRows ?? 0);
+}
+
 function normalizeStatuses(status?: JobStatus | JobStatus[]): JobStatus[] {
   if (!status) return [...DEFAULT_TRANSFER_STATUSES];
   return Array.isArray(status) ? status : [status];
@@ -88,7 +94,7 @@ export function createOrchestrator(options: OrchestratorOptions): WorkmaticOrche
       .set({ queue: to, updated_at: timestamp })
       .where('id', 'in', ids)
       .execute();
-    return Number(result[0]?.numUpdatedRows ?? 0);
+    return rowsUpdated(result);
   }
 
   async function transferDead(
@@ -114,7 +120,7 @@ export function createOrchestrator(options: OrchestratorOptions): WorkmaticOrche
         })
         .where('id', 'in', ids)
         .execute();
-      return Number(result[0]?.numUpdatedRows ?? 0);
+      return rowsUpdated(result);
     }
 
     const result = await db
@@ -122,7 +128,7 @@ export function createOrchestrator(options: OrchestratorOptions): WorkmaticOrche
       .set({ queue: to, updated_at: timestamp })
       .where('id', 'in', ids)
       .execute();
-    return Number(result[0]?.numUpdatedRows ?? 0);
+    return rowsUpdated(result);
   }
 
   async function transferOtherStatus(
@@ -139,7 +145,7 @@ export function createOrchestrator(options: OrchestratorOptions): WorkmaticOrche
       .set({ queue: to, updated_at: timestamp })
       .where('id', 'in', ids)
       .execute();
-    return Number(result[0]?.numUpdatedRows ?? 0);
+    return rowsUpdated(result);
   }
 
   const orchestrator: WorkmaticOrchestrator = {

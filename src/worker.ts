@@ -17,6 +17,33 @@ import { defaultBackoff, parsePayload, now } from './utils.js';
 /** Default job execution timeout when `timeoutMs` is omitted (1 minute). Use `timeoutMs: 0` for no limit. */
 export const DEFAULT_WORKER_TIMEOUT_MS = 60_000;
 
+/** @internal Exported for tests — maps SQLite RETURNING result to claimed jobs */
+export function parseClaimedRows(result: unknown): ClaimedJob[] {
+  const rows = (result as { rows?: ClaimedJob[] }).rows;
+  if (!rows || !Array.isArray(rows)) {
+    return [];
+  }
+  return rows.map((row) => ({
+    id: row.id,
+    public_id: row.public_id,
+    queue: row.queue,
+    payload: row.payload,
+    attempts: row.attempts,
+    max_attempts: row.max_attempts,
+    priority: row.priority,
+    created_at: row.created_at,
+    last_error: row.last_error,
+  }));
+}
+
+/** @internal Exported for tests */
+export function requireProcessor<T>(processor: JobProcessor<T> | null): JobProcessor<T> {
+  if (!processor) {
+    throw new Error('No processor set');
+  }
+  return processor;
+}
+
 /**
  * Create a job queue worker for processing jobs
  * 
@@ -179,21 +206,7 @@ export function createWorker(options: WorkerOptions): WorkmaticWorker {
         RETURNING id, public_id, queue, payload, attempts, max_attempts, priority, created_at, last_error
       `.execute(trx);
 
-      const rows = (result as { rows: ClaimedJob[] }).rows;
-      if (!rows || !Array.isArray(rows)) {
-        return [];
-      }
-      return rows.map((row) => ({
-        id: row.id,
-        public_id: row.public_id,
-        queue: row.queue,
-        payload: row.payload,
-        attempts: row.attempts,
-        max_attempts: row.max_attempts,
-        priority: row.priority,
-        created_at: row.created_at,
-        last_error: row.last_error,
-      }));
+      return parseClaimedRows(result);
     });
   }
 
@@ -284,9 +297,7 @@ export function createWorker(options: WorkerOptions): WorkmaticWorker {
    * Process a single job
    */
   async function processJob(claimedJob: ClaimedJob): Promise<void> {
-    if (!processor) {
-      throw new Error('No processor set');
-    }
+    const fn = requireProcessor(processor);
 
     // Parse payload and create job object
     const payload = parsePayload(claimedJob.payload);
@@ -305,9 +316,9 @@ export function createWorker(options: WorkerOptions): WorkmaticWorker {
     try {
       // Run processor with optional timeout
       if (timeoutMs) {
-        await withTimeout(processor(job), timeoutMs, job.id);
+        await withTimeout(fn(job), timeoutMs, job.id);
       } else {
-        await processor(job);
+        await fn(job);
       }
       await markDone(claimedJob.id);
     } catch (error) {

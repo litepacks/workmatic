@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createDatabase, createClient, createWorker } from '../src/index.js';
+import { parseClaimedRows, requireProcessor } from '../src/worker.js';
 import type { WorkmaticDb, Job } from '../src/types.js';
 
 describe('createWorker', () => {
@@ -11,6 +12,15 @@ describe('createWorker', () => {
 
   afterEach(async () => {
     await db.destroy();
+  });
+
+  it('parseClaimedRows returns empty for invalid result', () => {
+    expect(parseClaimedRows({ rows: null })).toEqual([]);
+    expect(parseClaimedRows({})).toEqual([]);
+  });
+
+  it('requireProcessor throws when processor is missing', () => {
+    expect(() => requireProcessor(null)).toThrow('No processor set');
   });
 
   it('should throw if db is not provided', () => {
@@ -427,7 +437,63 @@ describe('createWorker', () => {
     });
   });
 
+  describe('non-Error throws', () => {
+    it('markFailed uses error.message when present', async () => {
+      const client = createClient({ db });
+      const worker = createWorker({ db, pollMs: 50, backoff: () => 10 });
+      worker.process(async () => {
+        throw new Error('');
+      });
+      await client.add({ n: 1 }, { maxAttempts: 1 });
+      worker.start();
+      await new Promise((r) => setTimeout(r, 400));
+      await worker.stop();
+    });
+
+    it('markFailed stringifies non-Error in processor', async () => {
+      const client = createClient({ db });
+      const worker = createWorker({ db, pollMs: 50, backoff: () => 10 });
+      worker.process(async () => {
+        throw 'not-an-error' as unknown as Error;
+      });
+      await client.add({ n: 1 }, { maxAttempts: 1 });
+      worker.start();
+      await new Promise((r) => setTimeout(r, 400));
+      await worker.stop();
+      const row = await db
+        .selectFrom('workmatic_jobs')
+        .select('last_error')
+        .executeTakeFirst();
+      expect(row?.last_error).toBe('not-an-error');
+    });
+
+    it('processes with timeoutMs disabled', async () => {
+      const client = createClient({ db });
+      const worker = createWorker({ db, pollMs: 50, timeoutMs: 0 });
+      worker.process(async () => {
+        await new Promise((r) => setTimeout(r, 50));
+      });
+      await client.add({ n: 1 });
+      worker.start();
+      await new Promise((r) => setTimeout(r, 300));
+      await worker.stop();
+      const stats = await client.stats();
+      expect(stats.done).toBe(1);
+    });
+  });
+
   describe('clear', () => {
+    it('should return 0 when numDeletedRows is missing', async () => {
+      const worker = createWorker({ db });
+      const spy = vi.spyOn(db, 'deleteFrom').mockReturnValue({
+        where: () => ({
+          execute: async () => [{}],
+        }),
+      } as never);
+      expect(await worker.clear()).toBe(0);
+      spy.mockRestore();
+    });
+
     it('should clear all jobs from the queue', async () => {
       const client = createClient({ db, queue: 'test-queue' });
       const worker = createWorker({ db, queue: 'test-queue' });

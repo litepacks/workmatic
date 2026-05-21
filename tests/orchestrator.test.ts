@@ -215,6 +215,21 @@ describe('createOrchestrator', () => {
     expect(orch.workers()).toHaveLength(2);
   });
 
+  it('transfer handles missing numUpdatedRows in result', async () => {
+    const orch = createOrchestrator({ db });
+    await orch.client('src').add({ n: 1 });
+    const spy = vi.spyOn(db, 'updateTable').mockReturnValue({
+      set: () => ({
+        where: () => ({
+          execute: async () => [{}],
+        }),
+      }),
+    } as never);
+    const { moved } = await orch.transfer({ from: 'src', to: 'dst', status: 'ready' });
+    expect(moved).toBe(0);
+    spy.mockRestore();
+  });
+
   it('should no-op transfer when from equals to', async () => {
     const orch = createOrchestrator({ db });
     await orch.client('same').add({ n: 1 });

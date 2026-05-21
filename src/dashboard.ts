@@ -26,10 +26,21 @@ const CONTENT_TYPES: Record<string, string> = {
   '.json': 'application/json; charset=utf-8',
 };
 
+/** @internal Exported for tests */
+export function requestUrl(url: string | undefined): string {
+  return url || '';
+}
+
+/** @internal Exported for tests — maps dashboard asset path to Content-Type */
+export function staticContentTypeFor(filePath: string): string {
+  const ext = filePath.substring(filePath.lastIndexOf('.')) || '.html';
+  return CONTENT_TYPES[ext] || 'application/octet-stream';
+}
+
 /**
  * Create the core request handler (shared between standalone and middleware)
  */
-function createRequestHandler(
+export function createRequestHandler(
   db: WorkmaticDb,
   workerMap: Map<string, WorkmaticWorker>,
   basePath: string = ''
@@ -77,7 +88,7 @@ function createRequestHandler(
    * API: Get jobs list
    */
   async function handleGetJobs(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    const query = parseQuery(req.url || '');
+    const query = parseQuery(requestUrl(req.url));
     const queueFilter = query.get('queue');
     const statusFilter = query.get('status') as JobStatus | null;
     const limit = Math.min(parseInt(query.get('limit') || '50', 10), 100);
@@ -133,7 +144,7 @@ function createRequestHandler(
    * API: Get statistics
    */
   async function handleGetStats(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    const query = parseQuery(req.url || '');
+    const query = parseQuery(requestUrl(req.url));
     const queueFilter = query.get('queue');
 
     // Get counts by status
@@ -263,8 +274,7 @@ function createRequestHandler(
     const fullPath = join(dashboardDir, filePath);
     
     // Determine content type
-    const ext = filePath.substring(filePath.lastIndexOf('.')) || '.html';
-    const contentType = CONTENT_TYPES[ext] || 'application/octet-stream';
+    const contentType = staticContentTypeFor(filePath);
 
     try {
       const content = await readFile(fullPath, 'utf-8');
@@ -283,28 +293,26 @@ function createRequestHandler(
     res: ServerResponse,
     next?: () => void
   ): Promise<boolean> {
-    const path = getPath(req.url || '/');
-
-    // Check if this request is for the dashboard
-    const fullUrl = req.url || '/';
-    if (basePath && !fullUrl.startsWith(basePath)) {
-      // Not our route, call next middleware if available
-      if (next) next();
-      return false;
-    }
-
-    // CORS headers
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
-    if (req.method === 'OPTIONS') {
-      res.writeHead(204);
-      res.end();
-      return true;
-    }
-
     try {
+      const path = getPath(req.url || '/');
+
+      // Check if this request is for the dashboard
+      const fullUrl = req.url || '/';
+      if (basePath && !fullUrl.startsWith(basePath)) {
+        if (next) next();
+        return false;
+      }
+
+      // CORS headers
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+      if (req.method === 'OPTIONS') {
+        res.writeHead(204);
+        res.end();
+        return true;
+      }
       // API routes
       if (path === '/api/jobs' && req.method === 'GET') {
         await handleGetJobs(req, res);
@@ -403,11 +411,7 @@ export function createDashboard(options: DashboardOptions): WorkmaticDashboard {
 
   // Create and start HTTP server
   const server = createServer((req, res) => {
-    handleRequest(req, res).catch(error => {
-      console.error('[workmatic] Unhandled error:', error);
-      res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Internal server error' }));
-    });
+    void handleRequest(req, res);
   });
 
   server.listen(port);
@@ -472,14 +476,6 @@ export function createDashboardMiddleware(options: DashboardMiddlewareOptions): 
   const handleRequest = createRequestHandler(db, workerMap, basePath);
 
   return (req, res, next) => {
-    handleRequest(req, res, next).catch(error => {
-      console.error('[workmatic] Unhandled error:', error);
-      if (next) {
-        next();
-      } else {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'Internal server error' }));
-      }
-    });
+    void handleRequest(req, res, next);
   };
 }

@@ -129,13 +129,6 @@ export async function cmdStats(dbPath: string): Promise<void> {
     console.log('\n📊 Job Statistics\n');
 
     const statusOrder = ['ready', 'running', 'done', 'dead'];
-    const statusEmoji: Record<string, string> = {
-      ready: '⏳',
-      running: '▶️',
-      done: '✅',
-      dead: '💀',
-    };
-
     const statusTable = new Table({
       head: ['', 'Status', 'Count'],
       style: { head: ['cyan'], border: ['gray'] },
@@ -145,7 +138,7 @@ export async function cmdStats(dbPath: string): Promise<void> {
     for (const status of statusOrder) {
       const stat = stats.find((s) => s.status === status);
       const count = stat?.count ?? 0;
-      const emoji = statusEmoji[status] || '';
+      const emoji = jobStatusEmoji(status);
       statusTable.push([emoji, status, count.toLocaleString()]);
     }
     statusTable.push([{ colSpan: 2, content: 'Total', hAlign: 'right' }, total.toLocaleString()]);
@@ -209,13 +202,6 @@ export async function cmdList(dbPath: string, options: Record<string, string>): 
       return;
     }
 
-    const statusEmoji: Record<string, string> = {
-      ready: '⏳',
-      running: '▶️',
-      done: '✅',
-      dead: '💀',
-    };
-
     const table = new Table({
       head: ['ID', 'Queue', 'Status', 'Pri', 'Attempts', 'Created'],
       style: { head: ['cyan'], border: ['gray'] },
@@ -225,7 +211,7 @@ export async function cmdList(dbPath: string, options: Record<string, string>): 
     });
 
     for (const job of jobs) {
-      const emoji = statusEmoji[job.status] || '';
+      const emoji = jobStatusEmoji(job.status);
       table.push([
         job.public_id.slice(0, 21),
         job.queue.slice(0, 14),
@@ -592,7 +578,19 @@ export async function cmdQueues(dbPath: string): Promise<void> {
   }
 }
 
-function parseTransferStatuses(raw?: string): JobStatus[] {
+const JOB_STATUS_EMOJI: Record<string, string> = {
+  ready: '⏳',
+  running: '▶️',
+  done: '✅',
+  dead: '💀',
+};
+
+/** @internal Exported for tests */
+export function jobStatusEmoji(status: string): string {
+  return JOB_STATUS_EMOJI[status] || '';
+}
+
+export function parseTransferStatuses(raw?: string): JobStatus[] {
   if (!raw) return ['ready', 'dead'];
   return raw.split(',').map((s) => s.trim()) as JobStatus[];
 }
