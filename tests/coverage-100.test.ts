@@ -115,6 +115,13 @@ describe('100% coverage gaps', () => {
       );
     });
 
+    it('createDashboardMiddleware handles basePath mismatch when next is omitted', async () => {
+      const middleware = createDashboardMiddleware({ db, basePath: '/wm' });
+      const req = { url: '/other', method: 'GET' } as any;
+      const res = {} as any;
+      expect(() => (middleware as any)(req, res)).not.toThrow();
+    });
+
     it('createDashboard close rejects when server already closed', async () => {
       const dashboard = createDashboard({ db, port: 3474 });
       await dashboard.close();
@@ -185,6 +192,79 @@ describe('100% coverage gaps', () => {
       expect(await worker.restoreState()).toBe('stopped');
     });
 
+    it('worker.stats ignores unrecognized status keys', async () => {
+      await db
+        .insertInto('workmatic_jobs')
+        .values({
+          public_id: 'x-worker',
+          queue: 'wq',
+          payload: '{}',
+          status: 'unknown' as 'ready',
+          priority: 0,
+          run_at: Date.now(),
+          attempts: 0,
+          max_attempts: 3,
+          lease_until: 0,
+          created_at: Date.now(),
+          updated_at: Date.now(),
+          last_error: null,
+        })
+        .execute();
+
+      const worker = createWorker({ db, queue: 'wq' });
+      const stats = await worker.stats();
+      expect(stats.total).toBe(1);
+      expect(stats.ready).toBe(0);
+    });
+
+    it('worker.clear handles missing numDeletedRows', async () => {
+      const worker = createWorker({ db });
+      const spy = vi.spyOn(db, 'deleteFrom').mockReturnValue({
+        where: () => ({
+          execute: async () => [{}],
+        }),
+      } as never);
+      const n = await worker.clear();
+      expect(n).toBe(0);
+      spy.mockRestore();
+    });
+
+    it('requeueExpiredLeases handles missing numUpdatedRows', async () => {
+      const worker = createWorker({
+        db,
+        pollMs: 10,
+        requeueExpiredIntervalMs: 1,
+      });
+      const spy = vi.spyOn(db, 'updateTable').mockReturnValue({
+        set: () => ({
+          where: () => ({
+            where: () => ({
+              where: () => ({
+                execute: async () => [{}],
+              }),
+            }),
+          }),
+        }),
+      } as never);
+      
+      worker.process(async () => {});
+      worker.start();
+      await new Promise((r) => setTimeout(r, 30));
+      await worker.stop();
+      spy.mockRestore();
+    });
+
+    it('autoRestore setImmediate handles missing processor', async () => {
+      const worker = createWorker({
+        db,
+        queue: 'auto-missing-proc',
+        persistState: true,
+        autoRestore: true,
+      });
+      await new Promise((r) => setImmediate(r));
+      await new Promise((r) => setTimeout(r, 20));
+      expect(worker.isRunning).toBe(false);
+    });
   });
 
   describe('client', () => {
@@ -202,6 +282,31 @@ describe('100% coverage gaps', () => {
       const n = await client.clear();
       expect(n).toBe(0);
       spy.mockRestore();
+    });
+
+    it('client.stats ignores unrecognized status keys', async () => {
+      await db
+        .insertInto('workmatic_jobs')
+        .values({
+          public_id: 'x-client',
+          queue: 'default',
+          payload: '{}',
+          status: 'unknown' as 'ready',
+          priority: 0,
+          run_at: Date.now(),
+          attempts: 0,
+          max_attempts: 3,
+          lease_until: 0,
+          created_at: Date.now(),
+          updated_at: Date.now(),
+          last_error: null,
+        })
+        .execute();
+
+      const client = createClient({ db });
+      const stats = await client.stats();
+      expect(stats.total).toBe(1);
+      expect(stats.ready).toBe(0);
     });
   });
 
@@ -309,6 +414,19 @@ describe('100% coverage gaps', () => {
       const log = vi.spyOn(console, 'log').mockImplementation(() => {});
       await runCommand('import', dbPath, [dbPath, csvPath]);
       err.mockRestore();
+      log.mockRestore();
+      await rm(dir, { recursive: true, force: true });
+    });
+
+    it('cmdImport with empty CSV', async () => {
+      const dir = await mkdtemp(join(tmpdir(), 'wm-empty-csv-'));
+      const csvPath = join(dir, 'empty.csv');
+      const header =
+        'public_id,queue,payload,status,priority,run_at,attempts,max_attempts,lease_until,created_at,updated_at,last_error';
+      await writeFile(csvPath, header);
+      const dbPath = join(dir, 'jobs.db');
+      const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+      await runCommand('import', dbPath, [dbPath, csvPath]);
       log.mockRestore();
       await rm(dir, { recursive: true, force: true });
     });

@@ -109,23 +109,24 @@ export function createWorker(options: WorkerOptions): WorkmaticWorker {
     return `worker_state_${queue}`;
   }
 
-  /**
-   * Save worker state to database
-   */
   async function saveState(state: WorkerState): Promise<void> {
     if (!persistState) return;
 
     const timestamp = now();
     const key = getStateKey();
 
-    // Use raw SQL for upsert since different SQLite versions have different syntax
-    await sql`
-      INSERT INTO workmatic_settings (queue, paused, updated_at)
-      VALUES (${key}, ${state === 'paused' ? 1 : state === 'running' ? 2 : 0}, ${timestamp})
-      ON CONFLICT(queue) DO UPDATE SET 
-        paused = ${state === 'paused' ? 1 : state === 'running' ? 2 : 0},
-        updated_at = ${timestamp}
-    `.execute(db);
+    try {
+      // Use raw SQL for upsert since different SQLite versions have different syntax
+      await sql`
+        INSERT INTO workmatic_settings (queue, paused, updated_at)
+        VALUES (${key}, ${state === 'paused' ? 1 : state === 'running' ? 2 : 0}, ${timestamp})
+        ON CONFLICT(queue) DO UPDATE SET 
+          paused = ${state === 'paused' ? 1 : state === 'running' ? 2 : 0},
+          updated_at = ${timestamp}
+      `.execute(db);
+    } catch {
+      // Ignore errors
+    }
   }
 
   /**
@@ -422,7 +423,7 @@ export function createWorker(options: WorkerOptions): WorkmaticWorker {
       fastqQueue = fastq.promise(processJob, concurrency);
 
       // Save state to database
-      saveState('running').catch(() => {});
+      void saveState('running');
 
       // Start pump loop
       pump();
@@ -442,10 +443,8 @@ export function createWorker(options: WorkerOptions): WorkmaticWorker {
       }
 
       // Wait for fastq to drain
-      if (fastqQueue) {
-        await fastqQueue.drained();
-        fastqQueue = null;
-      }
+      await fastqQueue!.drained();
+      fastqQueue = null;
 
       // Save state to database
       await saveState('stopped');
@@ -453,12 +452,12 @@ export function createWorker(options: WorkerOptions): WorkmaticWorker {
 
     pause(): void {
       paused = true;
-      saveState('paused').catch(() => {});
+      void saveState('paused');
     },
 
     resume(): void {
       paused = false;
-      saveState('running').catch(() => {});
+      void saveState('running');
     },
 
     async stats(): Promise<JobStats> {
