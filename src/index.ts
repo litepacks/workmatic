@@ -5,11 +5,12 @@
  */
 
 // Main exports
-export { createDatabase, getUnderlyingDb } from './database.js';
+export { createDatabase, getUnderlyingDb, enableStatementCache } from './database.js';
 export { createClient } from './client.js';
 export { createWorker, DEFAULT_WORKER_TIMEOUT_MS } from './worker.js';
 export { createOrchestrator } from './orchestrator.js';
 export { createDashboard, createDashboardMiddleware } from './dashboard.js';
+export { attachGracefulShutdown } from './shutdown.js';
 
 // Utility exports
 export { defaultBackoff, validatePayload } from './utils.js';
@@ -37,6 +38,7 @@ export type {
   MoveJobOptions,
   DashboardOptions,
   DashboardMiddlewareOptions,
+  GracefulShutdownOptions,
   BackoffFunction,
   JobProcessor,
   

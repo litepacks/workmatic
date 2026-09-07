@@ -110,15 +110,12 @@ describe('createWorker', () => {
         },
       });
       worker.process(async () => {});
-      const txSpy = vi.spyOn(db, 'transaction').mockReturnValue({
-        execute: async () => {
-          throw new Error('tx failed');
-        },
-      } as any);
+      const executor = db.getExecutor();
+      const execSpy = vi.spyOn(executor, 'executeQuery').mockRejectedValue(new Error('tx failed'));
       worker.start();
       await new Promise((r) => setTimeout(r, 120));
       await worker.stop();
-      txSpy.mockRestore();
+      execSpy.mockRestore();
       expect(caught).toBeInstanceOf(Error);
       expect((caught as Error).message).toBe('tx failed');
     });
@@ -585,6 +582,119 @@ describe('createWorker', () => {
       const deleted = await worker.clear();
       
       expect(deleted).toBe(0);
+    });
+  });
+
+  describe('wakeUp', () => {
+    it('no-ops when worker is not running', () => {
+      const worker = createWorker({ db });
+      expect(() => worker.wakeUp()).not.toThrow();
+    });
+
+    it('no-ops when worker is paused', async () => {
+      const worker = createWorker({ db });
+      worker.process(async () => {});
+      worker.start();
+      worker.pause();
+      expect(() => worker.wakeUp()).not.toThrow();
+      await worker.stop();
+    });
+
+    it('immediately wakes up worker without waiting for pollMs', async () => {
+      const client = createClient({ db, queue: 'wakeup-test' });
+      const worker = createWorker({ db, queue: 'wakeup-test', pollMs: 5000 });
+      let processed = false;
+      worker.process(async () => {
+        processed = true;
+      });
+      worker.start();
+      // Test calling wakeUp while pump is in flight (pumpTimeout is null)
+      worker.wakeUp();
+
+      // Wait for pump to finish and enter 5000ms sleep (pumpTimeout is set)
+      await new Promise((r) => setTimeout(r, 50));
+
+      await client.add({ x: 1 });
+      expect(processed).toBe(false);
+
+      // Test calling wakeUp while pumpTimeout is active (clears pumpTimeout)
+      worker.wakeUp();
+      await new Promise((r) => setTimeout(r, 50));
+      expect(processed).toBe(true);
+
+      await worker.stop();
+    });
+  });
+
+  describe('completion micro-batching', () => {
+    it('flushes batched completions when threshold is reached', async () => {
+      const client = createClient({ db, queue: 'micro-batch-test' });
+      await client.addMany([{ n: 1 }, { n: 2 }, { n: 3 }]);
+
+      const worker = createWorker({
+        db,
+        queue: 'micro-batch-test',
+        concurrency: 3,
+        completionBatchSize: 2,
+        pollMs: 50,
+      });
+
+      let doneCount = 0;
+      worker.process(async () => {
+        doneCount++;
+      });
+
+      worker.start();
+      await new Promise((r) => setTimeout(r, 100));
+      await worker.flushCompletions();
+      await worker.stop();
+
+      expect(doneCount).toBe(3);
+      const stats = await client.stats();
+      expect(stats.done).toBe(3);
+    });
+
+    it('processes immediately when completionBatchSize is 0', async () => {
+      const client = createClient({ db, queue: 'micro-batch-zero' });
+      await client.add({ n: 1 });
+
+      const worker = createWorker({
+        db,
+        queue: 'micro-batch-zero',
+        completionBatchSize: 0,
+        pollMs: 50,
+      });
+
+      worker.process(async () => {});
+      worker.start();
+      await new Promise((r) => setTimeout(r, 50));
+      await worker.stop();
+
+      const stats = await client.stats();
+      expect(stats.done).toBe(1);
+    });
+
+    it('flushDoneBatch handles empty pending list without error', async () => {
+      const worker = createWorker({ db });
+      await expect(worker.flushCompletions()).resolves.toBeUndefined();
+    });
+
+    it('handles batch flush error gracefully', async () => {
+      const client = createClient({ db, queue: 'batch-err' });
+      await client.add({ a: 1 });
+      const worker = createWorker({ db, queue: 'batch-err', completionBatchSize: 1 });
+      const origExec = db.executeQuery.bind(db);
+      const spy = vi.spyOn(db, 'executeQuery').mockImplementation((query: any) => {
+        if (typeof query?.sql === 'string' && query.sql.includes("status = 'done'")) {
+          return Promise.reject(new Error('flush failed'));
+        }
+        return origExec(query);
+      });
+      worker.process(async () => {});
+      worker.start();
+      await new Promise((r) => setTimeout(r, 100));
+      await worker.stop();
+      spy.mockRestore();
     });
   });
 });

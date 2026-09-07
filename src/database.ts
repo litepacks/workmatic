@@ -39,6 +39,13 @@ export function createDatabase(options: DatabaseOptions = {}): WorkmaticDb {
   sqliteDb.pragma('journal_mode = WAL');
   sqliteDb.pragma('synchronous = NORMAL');
   sqliteDb.pragma('busy_timeout = 5000');
+  sqliteDb.pragma('cache_size = -64000');
+  sqliteDb.pragma('temp_store = MEMORY');
+  sqliteDb.pragma('mmap_size = 268435456');
+
+  // Enable prepared statement cache
+  const cacheSize = options.statementCacheSize ?? 1000;
+  enableStatementCache(sqliteDb, cacheSize);
 
   // Create Kysely instance
   const db = new Kysely<WorkmaticDatabase>({
@@ -78,18 +85,30 @@ function createSchema(db: Database.Database): void {
     )
   `);
 
-  // Create composite index for efficient job claiming
-  // (queue, status, run_at, priority, id)
-  db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_workmatic_jobs_claim 
-    ON workmatic_jobs (queue, status, run_at, priority, id)
-  `);
+  // Create composite partial index for efficient job claiming
+  // Only indexes active ready jobs, preventing unbounded index growth from done/dead jobs
+  ensurePartialIndex(
+    db,
+    'idx_workmatic_jobs_claim',
+    `CREATE INDEX IF NOT EXISTS idx_workmatic_jobs_claim 
+     ON workmatic_jobs (queue, status, run_at, priority, id)
+     WHERE status = 'ready'`
+  );
 
-  // Create index for lease expiration checking
-  // (status, lease_until)
+  // Create partial index for lease expiration checking
+  // Only indexes running jobs with active leases
+  ensurePartialIndex(
+    db,
+    'idx_workmatic_jobs_lease',
+    `CREATE INDEX IF NOT EXISTS idx_workmatic_jobs_lease 
+     ON workmatic_jobs (status, lease_until)
+     WHERE status = 'running'`
+  );
+
+  // Composite covering index for queue-level stats queries
   db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_workmatic_jobs_lease 
-    ON workmatic_jobs (status, lease_until)
+    CREATE INDEX IF NOT EXISTS idx_workmatic_jobs_queue_status 
+    ON workmatic_jobs (queue, status)
   `);
 
   // Create settings table for queue-level settings (pause state, etc.)
@@ -105,6 +124,23 @@ function createSchema(db: Database.Database): void {
   db.exec(`
     UPDATE workmatic_jobs SET status = 'dead' WHERE status = 'failed'
   `);
+}
+
+/**
+ * Create or upgrade an index to a partial index
+ */
+function ensurePartialIndex(db: Database.Database, indexName: string, createSql: string): void {
+  const row = db
+    .prepare(
+      "SELECT sql FROM sqlite_master WHERE type = 'index' AND name = ?"
+    )
+    .get(indexName) as { sql?: string } | undefined;
+
+  if (row?.sql && !row.sql.toUpperCase().includes('WHERE')) {
+    db.exec(`DROP INDEX IF EXISTS ${indexName}`);
+  }
+
+  db.exec(createSql);
 }
 
 /**
@@ -131,3 +167,52 @@ export function getUnderlyingDb(db: WorkmaticDb): Database.Database {
     'getUnderlyingDb: could not resolve better-sqlite3 instance (use createDatabase() or pass db from it)'
   );
 }
+
+/**
+ * Enable prepared statement caching on a better-sqlite3 database instance.
+ * Reuses compiled statements across queries, bypassing SQLite SQL parsing
+ * and bytecode recompilation on repeated queries.
+ *
+ * @param db - better-sqlite3 database instance
+ * @param maxStatements - Maximum cached statements (default: 1000). Set <= 0 to disable.
+ */
+export function enableStatementCache(
+  db: Database.Database,
+  maxStatements = 1000
+): Database.Database {
+  if (maxStatements <= 0) {
+    return db;
+  }
+
+  const originalPrepare = db.prepare.bind(db);
+  const cache = new Map<string, Database.Statement>();
+
+  db.prepare = function (sql: string) {
+    const cached = cache.get(sql);
+    if (cached) {
+      cache.delete(sql);
+      cache.set(sql, cached);
+      if (!cached.busy) {
+        return cached;
+      }
+      return originalPrepare(sql);
+    }
+
+    const stmt = originalPrepare(sql);
+    if (cache.size >= maxStatements) {
+      const oldestKey = cache.keys().next().value;
+      cache.delete(oldestKey!);
+    }
+    cache.set(sql, stmt);
+    return stmt;
+  } as typeof db.prepare;
+
+  const originalClose = db.close.bind(db);
+  db.close = function () {
+    cache.clear();
+    return originalClose();
+  };
+
+  return db;
+}
+

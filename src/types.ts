@@ -106,6 +106,8 @@ export interface DatabaseOptions {
   db?: import('better-sqlite3').Database;
   /** Path to SQLite database file (ignored if db is provided) */
   filename?: string;
+  /** Maximum number of prepared statements to cache. Default: 1000. Set to 0 to disable. */
+  statementCacheSize?: number;
 }
 
 /**
@@ -116,6 +118,10 @@ export interface ClientOptions {
   db: WorkmaticDb;
   /** Queue name. Default: 'default' */
   queue?: string;
+  /** Optional callback to notify immediately when a ready job is added */
+  onJobAdded?: () => void;
+  /** Optional worker instance to wake up immediately when a ready job is added */
+  worker?: WorkmaticWorker;
 }
 
 /**
@@ -162,6 +168,11 @@ export interface WorkerOptions {
   requeueExpiredIntervalMs?: number;
   /** Called when the pump loop catches an error (after optional default logging) */
   onPumpError?: (error: unknown) => void;
+  /**
+   * Maximum number of completions to batch before flushing to the database.
+   * Default: 50. Set to 0 to disable completion micro-batching.
+   */
+  completionBatchSize?: number;
 }
 
 /**
@@ -220,6 +231,12 @@ export interface WorkmaticWorker {
   restoreState(): Promise<WorkerState | null>;
   /** Clear all jobs from the queue */
   clear(options?: { status?: JobStatus }): Promise<number>;
+  /** Wake up the worker immediately to check for jobs without waiting for pollMs */
+  wakeUp(): void;
+  /** Flush any pending buffered completion updates to the database */
+  flushCompletions(): Promise<void>;
+  /** Attach OS signal handlers (SIGINT, SIGTERM) for graceful shutdown */
+  attachSignalHandlers(options?: GracefulShutdownOptions): () => void;
   /** Check if worker is running */
   readonly isRunning: boolean;
   /** Check if worker is paused */
@@ -347,6 +364,30 @@ export interface WorkmaticOrchestrator {
   stats(queue?: string): Promise<Record<string, JobStats>>;
   transfer(options: TransferOptions): Promise<TransferResult>;
   moveJob(publicId: string, toQueue: string, options?: MoveJobOptions): Promise<void>;
+  /** Attach OS signal handlers (SIGINT, SIGTERM) for graceful shutdown of all workers */
+  attachSignalHandlers(options?: GracefulShutdownOptions): () => void;
+}
+
+/**
+ * Options for configuring graceful shutdown signal listeners
+ */
+export interface GracefulShutdownOptions {
+  /** OS signals to listen for. Default: ['SIGINT', 'SIGTERM'] */
+  signals?: NodeJS.Signals[];
+  /** Maximum time in ms to wait for jobs to drain before forced exit. Default: 30000 */
+  timeoutMs?: number;
+  /** Whether to call process.exit when shutdown finishes or times out. Default: true */
+  exitOnComplete?: boolean;
+  /** Process exit code on clean shutdown. Default: 0 */
+  exitCode?: number;
+  /** Process exit code when shutdown times out or errors. Default: 1 */
+  timeoutExitCode?: number;
+  /** Callback triggered when shutdown begins */
+  onShutdownStart?: (signal: NodeJS.Signals) => void;
+  /** Callback triggered after shutdown finishes successfully */
+  onShutdownComplete?: () => void;
+  /** Callback triggered if shutdown times out or fails */
+  onShutdownError?: (error: unknown) => void;
 }
 
 /**

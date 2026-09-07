@@ -14,8 +14,10 @@ import type {
   JobStats,
   JobStatus,
   JobProcessor,
+  GracefulShutdownOptions,
 } from './types.js';
 import { now } from './utils.js';
+import { attachGracefulShutdown } from './shutdown.js';
 
 const DEFAULT_TRANSFER_STATUSES: JobStatus[] = ['ready', 'dead'];
 const DEFAULT_TRANSFER_LIMIT = 10_000;
@@ -50,7 +52,15 @@ export function createOrchestrator(options: OrchestratorOptions): WorkmaticOrche
   function ensureEntry(queue: string): QueueEntry {
     let entry = registry.get(queue);
     if (!entry) {
-      entry = { client: createClient({ db, queue }) };
+      entry = {
+        client: createClient({
+          db,
+          queue,
+          onJobAdded: () => {
+            registry.get(queue)?.worker?.wakeUp();
+          },
+        }),
+      };
       registry.set(queue, entry);
     }
     return entry;
@@ -316,6 +326,10 @@ export function createOrchestrator(options: OrchestratorOptions): WorkmaticOrche
         .set({ queue: toQueue, updated_at: timestamp })
         .where('public_id', '=', publicId)
         .execute();
+    },
+
+    attachSignalHandlers(options?: GracefulShutdownOptions): () => void {
+      return attachGracefulShutdown(this, options);
     },
   };
 

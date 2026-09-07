@@ -1,5 +1,5 @@
 import { nanoid } from 'nanoid';
-import { sql } from 'kysely';
+import { CompiledQuery } from 'kysely';
 import type {
   WorkmaticDb,
   ClientOptions,
@@ -38,10 +38,17 @@ import { validatePayload, now } from './utils.js';
  * ```
  */
 export function createClient(options: ClientOptions): WorkmaticClient {
-  const { db, queue = 'default' } = options;
+  const { db, queue = 'default', onJobAdded, worker } = options;
 
   if (!db) {
     throw new Error('Database instance is required');
+  }
+
+  function notifyJobAdded(delayMs: number): void {
+    if (delayMs <= 0) {
+      worker?.wakeUp();
+      onJobAdded?.();
+    }
   }
 
   return {
@@ -68,23 +75,14 @@ export function createClient(options: ClientOptions): WorkmaticClient {
       const runAt = timestamp + delayMs;
 
       // Insert job
-      await db
-        .insertInto('workmatic_jobs')
-        .values({
-          public_id: publicId,
-          queue,
-          payload: payloadJson,
-          status: 'ready',
-          priority,
-          run_at: runAt,
-          attempts: 0,
-          max_attempts: maxAttempts,
-          lease_until: 0,
-          created_at: timestamp,
-          updated_at: timestamp,
-          last_error: null,
-        })
-        .execute();
+      await db.executeQuery(
+        CompiledQuery.raw(
+          `INSERT INTO workmatic_jobs (public_id, queue, payload, status, priority, run_at, attempts, max_attempts, lease_until, created_at, updated_at, last_error) VALUES (?, ?, ?, 'ready', ?, ?, 0, ?, 0, ?, ?, null)`,
+          [publicId, queue, payloadJson, priority, runAt, maxAttempts, timestamp, timestamp]
+        )
+      );
+
+      notifyJobAdded(delayMs);
 
       return { ok: true, id: publicId };
     },
@@ -106,7 +104,7 @@ export function createClient(options: ClientOptions): WorkmaticClient {
       const timestamp = now();
       const runAt = timestamp + delayMs;
 
-      return await db.transaction().execute(async (trx) => {
+      const result = await db.transaction().execute(async (trx) => {
         const ids: string[] = [];
         const rows = payloads.map((payload) => {
           const payloadJson = validatePayload(payload);
@@ -129,23 +127,24 @@ export function createClient(options: ClientOptions): WorkmaticClient {
         });
 
         await trx.insertInto('workmatic_jobs').values(rows).execute();
-        return { ok: true, ids };
+        return { ok: true as const, ids };
       });
+
+      notifyJobAdded(delayMs);
+
+      return result;
     },
 
     /**
      * Get job statistics for the queue
      */
     async stats(): Promise<JobStats> {
-      const result = await db
-        .selectFrom('workmatic_jobs')
-        .select([
-          'status',
-          sql<number>`count(*)`.as('count'),
-        ])
-        .where('queue', '=', queue)
-        .groupBy('status')
-        .execute();
+      const result = await db.executeQuery<{ status: JobStatus; count: number }>(
+        CompiledQuery.raw(
+          'SELECT status, count(*) AS count FROM workmatic_jobs WHERE queue = ? GROUP BY status',
+          [queue]
+        )
+      );
 
       const stats: JobStats = {
         ready: 0,
@@ -155,8 +154,8 @@ export function createClient(options: ClientOptions): WorkmaticClient {
         total: 0,
       };
 
-      for (const row of result) {
-        const status = row.status as JobStatus;
+      for (const row of result.rows) {
+        const status = row.status;
         const count = Number(row.count);
         if (status in stats) {
           stats[status] = count;

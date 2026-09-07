@@ -1,6 +1,6 @@
 import fastq from 'fastq';
 import type { queueAsPromised } from 'fastq';
-import { sql } from 'kysely';
+import { sql, CompiledQuery } from 'kysely';
 import type {
   WorkmaticDb,
   WorkerOptions,
@@ -11,8 +11,10 @@ import type {
   Job,
   ClaimedJob,
   WorkerState,
+  GracefulShutdownOptions,
 } from './types.js';
 import { defaultBackoff, parsePayload, now } from './utils.js';
+import { attachGracefulShutdown } from './shutdown.js';
 
 /** Default job execution timeout when `timeoutMs` is omitted (1 minute). Use `timeoutMs: 0` for no limit. */
 export const DEFAULT_WORKER_TIMEOUT_MS = 60_000;
@@ -81,6 +83,7 @@ export function createWorker(options: WorkerOptions): WorkmaticWorker {
     pauseCheckIntervalMs = 300,
     requeueExpiredIntervalMs = 0,
     onPumpError,
+    completionBatchSize = 50,
   } = options;
 
   if (!db) {
@@ -96,6 +99,8 @@ export function createWorker(options: WorkerOptions): WorkmaticWorker {
   let lastPauseCheckAt = 0;
   let cachedDbPaused = false;
   let lastRequeueAt = 0;
+  let pendingDone: Array<{ id: number; resolve: () => void; reject: (err: unknown) => void }> = [];
+  let flushTimeout: NodeJS.Immediate | null = null;
 
   function notifyPumpError(error: unknown): void {
     console.error('[workmatic] Pump error:', error);
@@ -182,48 +187,104 @@ export function createWorker(options: WorkerOptions): WorkmaticWorker {
     const timestamp = now();
     const leaseUntil = timestamp + leaseMs;
 
-    return await db.transaction().execute(async (trx) => {
-      const result = await sql<{
-        id: number;
-        public_id: string;
-        queue: string;
-        payload: string;
-        attempts: number;
-        max_attempts: number;
-        priority: number;
-        created_at: number;
-        last_error: string | null;
-      }>`
-        UPDATE workmatic_jobs
-        SET status = 'running', lease_until = ${leaseUntil}, updated_at = ${timestamp}
-        WHERE rowid IN (
-          SELECT rowid FROM workmatic_jobs
-          WHERE queue = ${queue}
-            AND status = 'ready'
-            AND run_at <= ${timestamp}
-          ORDER BY priority ASC, id ASC
-          LIMIT ${limit}
-        )
-        RETURNING id, public_id, queue, payload, attempts, max_attempts, priority, created_at, last_error
-      `.execute(trx);
+    const result = await sql<{
+      id: number;
+      public_id: string;
+      queue: string;
+      payload: string;
+      attempts: number;
+      max_attempts: number;
+      priority: number;
+      created_at: number;
+      last_error: string | null;
+    }>`
+      UPDATE workmatic_jobs
+      SET status = 'running', lease_until = ${leaseUntil}, updated_at = ${timestamp}
+      WHERE rowid IN (
+        SELECT rowid FROM workmatic_jobs
+        WHERE queue = ${queue}
+          AND status = 'ready'
+          AND run_at <= ${timestamp}
+        ORDER BY priority ASC, id ASC
+        LIMIT ${limit}
+      )
+      RETURNING id, public_id, queue, payload, attempts, max_attempts, priority, created_at, last_error
+    `.execute(db);
 
-      return parseClaimedRows(result);
-    });
+    return parseClaimedRows(result);
   }
 
   /**
-   * Mark a job as completed
+   * Flush all buffered completion updates in a single batch
    */
-  async function markDone(jobId: number): Promise<void> {
-    await db
-      .updateTable('workmatic_jobs')
-      .set({
-        status: 'done',
-        lease_until: 0,
-        updated_at: now(),
-      })
-      .where('id', '=', jobId)
-      .execute();
+  async function flushDoneBatch(): Promise<void> {
+    if (flushTimeout !== null) {
+      clearImmediate(flushTimeout);
+      flushTimeout = null;
+    }
+    if (pendingDone.length === 0) {
+      return;
+    }
+    const current = pendingDone;
+    pendingDone = [];
+
+    const timestamp = now();
+    try {
+      if (current.length === 1) {
+        await db.executeQuery(
+          CompiledQuery.raw(
+            "UPDATE workmatic_jobs SET status = 'done', lease_until = 0, updated_at = ? WHERE id = ?",
+            [timestamp, current[0].id]
+          )
+        );
+      } else {
+        const CHUNK_SIZE = 500;
+        for (let i = 0; i < current.length; i += CHUNK_SIZE) {
+          const chunk = current.slice(i, i + CHUNK_SIZE);
+          const placeholders = chunk.map(() => '?').join(', ');
+          const params = [timestamp, ...chunk.map((item) => item.id)];
+          await db.executeQuery(
+            CompiledQuery.raw(
+              `UPDATE workmatic_jobs SET status = 'done', lease_until = 0, updated_at = ? WHERE id IN (${placeholders})`,
+              params
+            )
+          );
+        }
+      }
+      for (const item of current) {
+        item.resolve();
+      }
+    } catch (err) {
+      for (const item of current) {
+        item.reject(err);
+      }
+    }
+  }
+
+  /**
+   * Mark a job as completed (buffers for micro-batching if completionBatchSize > 0)
+   */
+  function markDone(jobId: number): Promise<void> {
+    if (completionBatchSize <= 0) {
+      return db.executeQuery(
+        CompiledQuery.raw(
+          "UPDATE workmatic_jobs SET status = 'done', lease_until = 0, updated_at = ? WHERE id = ?",
+          [now(), jobId]
+        )
+      ).then(() => {});
+    }
+
+    return new Promise((resolve, reject) => {
+      pendingDone.push({ id: jobId, resolve, reject });
+      if (pendingDone.length >= completionBatchSize) {
+        void flushDoneBatch();
+      } else if (!flushTimeout) {
+        flushTimeout = setImmediate(() => {
+          flushTimeout = null;
+          void flushDoneBatch();
+        });
+      }
+    });
   }
 
   /**
@@ -243,31 +304,20 @@ export function createWorker(options: WorkerOptions): WorkmaticWorker {
       // Retry: set back to ready with backoff delay
       const runAt = timestamp + backoff(newAttempts);
       
-      await db
-        .updateTable('workmatic_jobs')
-        .set({
-          status: 'ready',
-          attempts: newAttempts,
-          run_at: runAt,
-          lease_until: 0,
-          last_error: errorMessage,
-          updated_at: timestamp,
-        })
-        .where('id', '=', jobId)
-        .execute();
+      await db.executeQuery(
+        CompiledQuery.raw(
+          "UPDATE workmatic_jobs SET status = 'ready', attempts = ?, run_at = ?, lease_until = 0, last_error = ?, updated_at = ? WHERE id = ?",
+          [newAttempts, runAt, errorMessage, timestamp, jobId]
+        )
+      );
     } else {
       // Max attempts reached: mark as dead
-      await db
-        .updateTable('workmatic_jobs')
-        .set({
-          status: 'dead',
-          attempts: newAttempts,
-          lease_until: 0,
-          last_error: errorMessage,
-          updated_at: timestamp,
-        })
-        .where('id', '=', jobId)
-        .execute();
+      await db.executeQuery(
+        CompiledQuery.raw(
+          "UPDATE workmatic_jobs SET status = 'dead', attempts = ?, lease_until = 0, last_error = ?, updated_at = ? WHERE id = ?",
+          [newAttempts, errorMessage, timestamp, jobId]
+        )
+      );
     }
   }
 
@@ -336,13 +386,13 @@ export function createWorker(options: WorkerOptions): WorkmaticWorker {
    * Check if queue is paused in database (for CLI control)
    */
   async function isQueuePausedInDb(): Promise<boolean> {
-    const setting = await db
-      .selectFrom('workmatic_settings')
-      .select('paused')
-      .where('queue', '=', queue)
-      .executeTakeFirst();
-    
-    return setting?.paused === 1;
+    const result = await db.executeQuery<{ paused: number }>(
+      CompiledQuery.raw(
+        'SELECT paused FROM workmatic_settings WHERE queue = ? LIMIT 1',
+        [queue]
+      )
+    );
+    return result.rows[0]?.paused === 1;
   }
 
   /**
@@ -446,12 +496,16 @@ export function createWorker(options: WorkerOptions): WorkmaticWorker {
       await fastqQueue!.drained();
       fastqQueue = null;
 
+      // Flush remaining buffered completions
+      await flushDoneBatch();
+
       // Save state to database
       await saveState('stopped');
     },
 
     pause(): void {
       paused = true;
+      void flushDoneBatch();
       void saveState('paused');
     },
 
@@ -461,15 +515,14 @@ export function createWorker(options: WorkerOptions): WorkmaticWorker {
     },
 
     async stats(): Promise<JobStats> {
-      const result = await db
-        .selectFrom('workmatic_jobs')
-        .select([
-          'status',
-          sql<number>`count(*)`.as('count'),
-        ])
-        .where('queue', '=', queue)
-        .groupBy('status')
-        .execute();
+      await flushDoneBatch();
+
+      const result = await db.executeQuery<{ status: JobStatus; count: number }>(
+        CompiledQuery.raw(
+          'SELECT status, count(*) AS count FROM workmatic_jobs WHERE queue = ? GROUP BY status',
+          [queue]
+        )
+      );
 
       const stats: JobStats = {
         ready: 0,
@@ -479,8 +532,8 @@ export function createWorker(options: WorkerOptions): WorkmaticWorker {
         total: 0,
       };
 
-      for (const row of result) {
-        const status = row.status as JobStatus;
+      for (const row of result.rows) {
+        const status = row.status;
         const count = Number(row.count);
         if (status in stats) {
           stats[status] = count;
@@ -525,6 +578,25 @@ export function createWorker(options: WorkerOptions): WorkmaticWorker {
 
       const result = await query.execute();
       return Number(result[0]?.numDeletedRows ?? 0);
+    },
+
+    wakeUp(): void {
+      if (!running || paused) {
+        return;
+      }
+      if (pumpTimeout) {
+        clearTimeout(pumpTimeout);
+        pumpTimeout = null;
+      }
+      pumpTimeout = setTimeout(pump, 0);
+    },
+
+    async flushCompletions(): Promise<void> {
+      await flushDoneBatch();
+    },
+
+    attachSignalHandlers(options?: GracefulShutdownOptions): () => void {
+      return attachGracefulShutdown(this, options);
     },
   };
 

@@ -286,4 +286,56 @@ describe('createClient', () => {
       expect(deleted).toBe(0);
     });
   });
+
+  describe('event-driven fast wakeup notification', () => {
+    it('notifies onJobAdded and worker.wakeUp on add when delayMs is 0 or omitted', async () => {
+      let notified = 0;
+      let woken = 0;
+      const fakeWorker = {
+        wakeUp: () => {
+          woken++;
+        },
+      } as any;
+
+      const client = createClient({
+        db,
+        onJobAdded: () => notified++,
+        worker: fakeWorker,
+      });
+
+      await client.add({ a: 1 });
+      expect(notified).toBe(1);
+      expect(woken).toBe(1);
+
+      // Delayed jobs should not trigger immediate wakeup
+      await client.add({ a: 2 }, { delayMs: 10000 });
+      expect(notified).toBe(1);
+      expect(woken).toBe(1);
+    });
+
+    it('notifies onJobAdded and worker.wakeUp on addMany when delayMs is 0 or omitted', async () => {
+      let notified = 0;
+      let woken = 0;
+      const fakeWorker = {
+        wakeUp: () => {
+          woken++;
+        },
+      } as any;
+
+      const client = createClient({
+        db,
+        onJobAdded: () => notified++,
+        worker: fakeWorker,
+      });
+
+      await client.addMany([{ a: 1 }, { a: 2 }]);
+      expect(notified).toBe(1);
+      expect(woken).toBe(1);
+
+      // Delayed addMany should not trigger immediate wakeup
+      await client.addMany([{ a: 3 }], { delayMs: 5000 });
+      expect(notified).toBe(1);
+      expect(woken).toBe(1);
+    });
+  });
 });
