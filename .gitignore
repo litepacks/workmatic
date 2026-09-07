@@ -3,6 +3,9 @@ node_modules/
 
 # Build output
 dist/
+dist-docs/
+.docboot/
+
 
 # Database files
 *.db

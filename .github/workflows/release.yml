@@ -1,0 +1,25 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+concurrency:
+  group: release-${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    uses: litepacks/.github/.github/workflows/npm-release.yml@main
+    permissions:
+      contents: write
+      id-token: write
+    with:
+      node-version: "22"
+      require-tests: true
+      require-build: true
+      run-docboot: auto
+      publish-access: public
+      npm-tag: latest
+      create-github-release: true

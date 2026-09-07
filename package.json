@@ -30,8 +30,13 @@
     "test:watch": "vitest",
     "bench": "tsx benchmarks/run.ts",
     "bench:micro": "tsx benchmarks/run.ts --micro",
+    "docs:dev": "docboot dev ./docs",
+    "docs:build": "docboot build ./docs",
+    "docs:serve": "docboot serve dist-docs",
+    "docs:doctor": "docboot doctor ./docs",
     "prepublishOnly": "npm run build"
   },
+
   "keywords": [
     "job-queue",
     "task-queue",
@@ -61,6 +66,7 @@
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.13.9",
     "@vitest/coverage-v8": "^4.1.11",
+    "docboot": "^0.3.0",
     "tsup": "^8.5.1",
     "tsx": "^4.23.13",
     "typescript": "^5.8.2",
