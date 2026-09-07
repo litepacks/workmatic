@@ -404,3 +404,64 @@ export interface ClaimedJob {
   created_at: number;
   last_error: string | null;
 }
+
+/**
+ * Event emitted when a job status is updated
+ */
+export interface JobStatusChangeEvent {
+  publicId: string;
+  queue: string;
+  previousStatus: JobStatus;
+  status: JobStatus;
+  timestamp: number;
+  error?: string | null;
+}
+
+/**
+ * Options for creating an MCP server
+ */
+export interface McpServerOptions {
+  /** Kysely database instance */
+  db: WorkmaticDb;
+  /** Input readable stream (default: process.stdin) */
+  input?: NodeJS.ReadableStream;
+  /** Output writable stream (default: process.stdout) */
+  output?: NodeJS.WritableStream;
+  /** Optional orchestrator instance to wake up workers on status change */
+  orchestrator?: WorkmaticOrchestrator;
+  /** Optional worker instances to wake up on status change */
+  workers?: WorkmaticWorker[];
+  /** Optional callback invoked whenever a job status changes */
+  onJobStatusChanged?: (event: JobStatusChangeEvent) => void;
+}
+
+/**
+ * Tool definition for Model Context Protocol (MCP)
+ */
+export interface McpToolDefinition {
+  name: string;
+  description: string;
+  inputSchema: {
+    type: 'object';
+    properties: Record<string, unknown>;
+    required?: string[];
+  };
+}
+
+/**
+ * MCP Server interface
+ */
+export interface WorkmaticMcpServer {
+  /** Start listening for JSON-RPC messages */
+  start(): void;
+  /** Stop listening and close streams */
+  stop(): void;
+  /** Handle a raw JSON-RPC string message */
+  handleMessage(raw: string): Promise<string | null>;
+  /** Register event listener for job status changes */
+  on(event: 'jobStatusChanged', listener: (event: JobStatusChangeEvent) => void): this;
+  /** Remove event listener for job status changes */
+  off(event: 'jobStatusChanged', listener: (event: JobStatusChangeEvent) => void): this;
+}
+
+

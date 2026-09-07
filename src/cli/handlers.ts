@@ -5,6 +5,7 @@ import { createInterface } from 'readline';
 import Table from 'cli-table3';
 import { createDatabase } from '../database.js';
 import { createOrchestrator } from '../orchestrator.js';
+import { createMcpServer } from '../mcp/server.js';
 import type { JobStatus } from '../types.js';
 
 export function printUsage(): void {
@@ -25,6 +26,8 @@ Commands:
   pause <db> <queue>             Pause a queue (running workers stop claiming)
   resume <db> <queue>            Resume a paused queue
   transfer <db> <from> <to>      Move jobs between queues
+  mcp <db>                       Start Model Context Protocol (MCP) server
+
 
 Options:
   --status=<status>   Filter by status (ready|running|done|dead), comma-separated for transfer
@@ -623,6 +626,43 @@ export async function cmdTransfer(
   }
 }
 
+export async function cmdMcp(
+  dbPath: string,
+  options: { input?: NodeJS.ReadableStream; output?: NodeJS.WritableStream } = {}
+): Promise<void> {
+  const db = createDatabase({ filename: dbPath });
+  const server = createMcpServer({
+    db,
+    input: options.input,
+    output: options.output,
+  });
+  server.start();
+
+  await new Promise<void>((resolve) => {
+    const cleanup = () => {
+      server.stop();
+      if (!options.input) {
+        process.removeListener('SIGINT', cleanup);
+        process.removeListener('SIGTERM', cleanup);
+        process.stdin.removeListener('end', cleanup);
+      }
+      resolve();
+    };
+
+    if (options.input) {
+      options.input.once('end', cleanup);
+    } else {
+      process.stdin.once('end', cleanup);
+      process.once('SIGINT', cleanup);
+      process.once('SIGTERM', cleanup);
+    }
+  });
+
+
+  await db.destroy();
+}
+
+
 export type CliCommand =
   | 'stats'
   | 'list'
@@ -633,7 +673,8 @@ export type CliCommand =
   | 'pause'
   | 'resume'
   | 'queues'
-  | 'transfer';
+  | 'transfer'
+  | 'mcp';
 
 export async function runCommand(
   command: CliCommand,
@@ -684,7 +725,11 @@ export async function runCommand(
       }
       await cmdTransfer(dbPath, positionalArgs[1], positionalArgs[2], options);
       break;
+    case 'mcp':
+      await cmdMcp(dbPath);
+      break;
     default:
       throw new Error(`Unknown command: ${command}`);
   }
 }
+

@@ -11,6 +11,7 @@ export { createWorker, DEFAULT_WORKER_TIMEOUT_MS } from './worker.js';
 export { createOrchestrator } from './orchestrator.js';
 export { createDashboard, createDashboardMiddleware } from './dashboard.js';
 export { attachGracefulShutdown } from './shutdown.js';
+export { createMcpServer, executeTool, MCP_TOOL_DEFINITIONS } from './mcp/index.js';
 
 // Utility exports
 export { defaultBackoff, validatePayload } from './utils.js';
@@ -39,8 +40,12 @@ export type {
   DashboardOptions,
   DashboardMiddlewareOptions,
   GracefulShutdownOptions,
+  McpServerOptions,
+  McpToolDefinition,
+  JobStatusChangeEvent,
   BackoffFunction,
   JobProcessor,
+
   
   // Interfaces
   WorkmaticClient,
@@ -48,7 +53,9 @@ export type {
   WorkmaticOrchestrator,
   WorkmaticDashboard,
   DashboardMiddleware,
+  WorkmaticMcpServer,
   WorkmaticDb,
   WorkmaticDatabase,
   WorkmaticJobsTable,
 } from './types.js';
+

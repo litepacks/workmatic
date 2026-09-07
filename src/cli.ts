@@ -26,7 +26,9 @@ const KNOWN_COMMANDS: readonly CliCommand[] = [
   'resume',
   'queues',
   'transfer',
+  'mcp',
 ];
+
 
 function isCliCommand(value: string): value is CliCommand {
   return (KNOWN_COMMANDS as readonly string[]).includes(value);
